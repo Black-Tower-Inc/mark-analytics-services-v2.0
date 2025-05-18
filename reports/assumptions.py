@@ -19,6 +19,8 @@ from pymongo import MongoClient
 from datetime import datetime
 from collections import Counter
 import matplotlib.pyplot as plt
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 load_dotenv()
 
@@ -210,4 +212,102 @@ if not df_actividad.empty:
     st.plotly_chart(fig_actividad)
 else:
     st.warning("No hay datos disponibles para mostrar.")
+
+
+# 1. Obtener los últimos 3 periodos (año+mes) en formato 'YYYYMM'
+hoy = datetime.utcnow()
+fechas_aniomes = [(hoy - relativedelta(months=i)).strftime("%Y%m") for i in range(3)]
+
+# 2. Filtrar las colecciones que correspondan a esos periodos
+colecciones_analizar = [db[f"userlists{aniomes}"] for aniomes in fechas_aniomes if f"userlists{aniomes}" in db.list_collection_names()]
+
+# 3. Extraer y agrupar los datos por 'type' para cada colección (periodo)
+registros = []
+for col in colecciones_analizar:
+    aniomes = col.name[-6:]  # Extrae año+mes del nombre de la colección
+
+    pipeline = [
+        {"$match": {
+            "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
+            "userid": {"$nin": ["5212292071173", "5212741410473", "5212292271390"]}
+        }},
+        {"$group": {"_id": "$type", "total": {"$sum": 1}}},  # Agrupa por 'type' contando documentos
+    ]
+
+    resultados = col.aggregate(pipeline)
+    for r in resultados:
+        registros.append({
+            "aniomes": aniomes,
+            "type": r["_id"] or "Desconocido",
+            "total": r["total"]
+        })
+
+# 4. Crear DataFrame
+df = pd.DataFrame(registros)
+
+# 5. Calcular porcentaje que representa cada 'type' dentro del total mensual
+df_total_aniomes = df.groupby("aniomes")["total"].sum().reset_index(name="total_mes")
+df = df.merge(df_total_aniomes, on="aniomes")
+df["porcentaje"] = (df["total"] / df["total_mes"]) * 100
+
+# 6. Graficar barras apiladas por 'type' para cada periodo (año+mes)
+st.title("📊 Consumo por tipo de interacción (últimos 3 meses).")
+df["aniomes"] = df["aniomes"].astype(str).str.strip()
+
+orden_aniomes = sorted(fechas_aniomes)
+
+fig = px.bar(
+    df,
+    x="aniomes",
+    y="porcentaje",
+    color="type",
+    text=df["porcentaje"].apply(lambda x: f"{x:.1f}%"),  # formato texto en %
+    title="Distribución de tipos de interacciones por periodo (YYYYMM)",
+    labels={"aniomes": "Periodo (YYYYMM)", "porcentaje": "Porcentaje de uso", "type": "Tipo"},
+    barmode="stack",
+    category_orders={"aniomes": orden_aniomes}
+)
+
+fig.update_layout(
+    xaxis=dict(
+        type='category',
+        categoryorder='array',
+        categoryarray=orden_aniomes,
+        tickmode='array',
+        tickvals=orden_aniomes,
+        ticktext=orden_aniomes
+    )
+)
+
+st.plotly_chart(fig)
+print(df)
+
+# 7. Conclusión específica para 'Notify'
+df_notify = df[df["type"] == "Notify"]
+min_uso = df_notify["porcentaje"].min() if not df_notify.empty else 0
+max_uso = df_notify["porcentaje"].max() if not df_notify.empty else 0
+
+st.subheader("📌 Conclusión sobre 'Notify'")
+st.write("Asunción: El servicio de las notificaciones o recordatorios automáticos, será consumida de un 50% a un 90% por los usuarios, en los primeros 3 meses.")
+if min_uso >= 50 and max_uso <= 90:
+    st.success(f"✅ El consumo de 'Notify' se encuentra dentro del rango estimado (50%-90%): de {min_uso:.1f}% a {max_uso:.1f}%.")
+elif df_notify.empty:
+    st.error("❌ No se encontraron registros del tipo 'Notify' en los últimos 3 meses.")
+else:
+    st.warning(f"⚠️ El consumo de 'Notify' está fuera del rango: de {min_uso:.1f}% a {max_uso:.1f}%.")
+
+
+# 7b. Conclusión específica para 'Tarea' (o el tipo que uses)
+df_tareas = df[df["type"] == "Task"]  # Ajusta el nombre si usas otro tipo exacto
+min_uso_tareas = df_tareas["porcentaje"].min() if not df_tareas.empty else 0
+max_uso_tareas = df_tareas["porcentaje"].max() if not df_tareas.empty else 0
+
+st.subheader("📌 Conclusión sobre 'Task'")
+st.write("Asunción: Las tareas será lo más consultado por los usuarios hasta en un 70% más que otras funciones.")
+if max_uso_tareas >= 70:
+    st.success(f"✅ Las tareas son lo más consultado por los usuarios, con un consumo máximo de {max_uso_tareas:.1f}%, que es hasta un 70% más que otras funciones.")
+elif df_tareas.empty:
+    st.error("❌ No se encontraron registros del tipo 'Task' en los últimos 3 meses.")
+else:
+    st.warning(f"ℹ️ Las tareas tienen un consumo menor al 70% ({max_uso_tareas:.1f}%).")
 
