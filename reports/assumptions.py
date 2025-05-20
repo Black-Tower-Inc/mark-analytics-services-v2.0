@@ -213,7 +213,9 @@ if not df_actividad.empty:
 else:
     st.warning("No hay datos disponibles para mostrar.")
 
-
+###########################################################################################
+#################Grafica de asunción para medir el uso de notificaciones###################
+###########################################################################################
 # 1. Obtener los últimos 3 periodos (año+mes) en formato 'YYYYMM'
 hoy = datetime.utcnow()
 fechas_aniomes = [(hoy - relativedelta(months=i)).strftime("%Y%m") for i in range(3)]
@@ -229,7 +231,8 @@ for col in colecciones_analizar:
     pipeline = [
         {"$match": {
             "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
-            "userid": {"$nin": ["5212292071173", "5212741410473", "5212292271390"]}
+            "userid": {"$nin": ["5212292071173", "5212741410473", "5212292271390"]},
+            "type": {"$ne": "Other"}
         }},
         {"$group": {"_id": "$type", "total": {"$sum": 1}}},  # Agrupa por 'type' contando documentos
     ]
@@ -280,7 +283,6 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig)
-print(df)
 
 # 7. Conclusión específica para 'Notify'
 df_notify = df[df["type"] == "Notify"]
@@ -311,3 +313,126 @@ elif df_tareas.empty:
 else:
     st.warning(f"ℹ️ Las tareas tienen un consumo menor al 70% ({max_uso_tareas:.1f}%).")
 
+###########################################################################################
+#################Grafica de asunción para medir felicidad de usuarios######################
+###########################################################################################
+# 1. Obtener los últimos 3 periodos (año+mes) en formato 'YYYYMM'
+
+hoy = datetime.utcnow()
+fechas_aniomes = [(hoy - relativedelta(months=i)).strftime("%Y%m") for i in range(3)]
+
+estados_buenos = ['S', 'T', 'I']
+
+registros = []
+detalle_usuarios = []  # Lista para guardar detalle de cada usuario
+
+for aniomes in fechas_aniomes:
+    col_name = f"userlists{aniomes}"
+    if col_name not in db.list_collection_names():
+        continue
+    
+    col = db[col_name]
+    
+    # Usar aggregate con filtro 
+    pipeline = [
+        {"$match": {
+            "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
+            "userid": {"$nin": ["5212292071173", "5212741410473", "5212292271390"]}
+        }},
+        {"$project": {
+            "userid": 1,
+            "usermood": 1
+        }}
+    ]
+    
+    cursor = col.aggregate(pipeline)
+    df = pd.DataFrame(list(cursor))
+    
+    if df.empty:
+        continue
+    
+    df['usermood'] = df['usermood'].fillna('N')
+    
+    # Guardar detalle de cada usuario en esta colección para tabla final
+    for userid, grupo in df.groupby("userid")["usermood"]:
+        buenos = grupo.isin(estados_buenos).sum()
+        sin_sentimiento = (grupo == 'N').sum()
+        malos = len(grupo) - buenos - sin_sentimiento
+        detalle_usuarios.append({
+            "aniomes": aniomes,
+            "userid": userid,
+            "sentimientos_buenos": buenos,
+            "sentimientos_malos": malos,
+            "sin_sentimiento": sin_sentimiento
+        })
+    
+    def usuario_feliz(moods):
+        total = len(moods)
+        buenos = moods.isin(estados_buenos).sum()
+        return buenos > total / 2
+    
+    resumen = df.groupby("userid")["usermood"].apply(usuario_feliz).reset_index(name="es_feliz")
+    
+    total_usuarios = resumen.shape[0]
+    usuarios_felices = resumen["es_feliz"].sum()
+    
+    registros.append({
+        "aniomes": aniomes,
+        "total_usuarios": total_usuarios,
+        "usuarios_felices": usuarios_felices
+    })
+
+df_final = pd.DataFrame(registros)
+
+if df_final.empty or df_final["total_usuarios"].sum() == 0:
+    st.warning("No hay datos para el servicio 'Mark' en los últimos 3 meses.")
+else:
+    df_final["porcentaje_felices"] = (df_final["usuarios_felices"] / df_final["total_usuarios"]) * 100
+    
+    st.title("📊 Experiencia de usuarios 'Mark' (últimos 3 meses)")
+    
+    # Asegurar que aniomes sea string
+    df_final["aniomes"] = df_final["aniomes"].astype(str)
+    
+    # Orden explícito para el eje X
+    orden_aniomes = sorted(fechas_aniomes)
+    
+    fig = px.bar(
+        df_final,
+        x="aniomes",
+        y="porcentaje_felices",
+        text=df_final["porcentaje_felices"].apply(lambda x: f"{x:.1f}%"),
+        labels={"aniomes": "Periodo (YYYYMM)", "porcentaje_felices": "Porcentaje de Usuarios Felices"},
+        title="Porcentaje de usuarios con experiencia buena a excelente en 'Mark'",
+        range_y=[0, 100],
+        category_orders={"aniomes": orden_aniomes}
+    )
+    
+    fig.update_layout(
+        xaxis=dict(
+            type='category',
+            categoryorder='array',
+            categoryarray=orden_aniomes,
+            tickmode='array',
+            tickvals=orden_aniomes,
+            ticktext=orden_aniomes
+        )
+    )
+    
+    st.plotly_chart(fig)
+    
+    min_p = df_final["porcentaje_felices"].min()
+    max_p = df_final["porcentaje_felices"].max()
+    
+    st.subheader("📌 Conclusión sobre la experiencia en 'Mark'")
+    st.write("Asunción: El servicio 'Mark' mantendrá una calificación buena a excelente en al menos el 90% de los usuarios en los últimos 3 meses.")
+    if min_p >= 90:
+        st.success(f"✅ La experiencia de 'Mark' está dentro del rango esperado (>= 90%), con valores de {min_p:.1f}% a {max_p:.1f}%.")
+    else:
+        st.warning(f"⚠️ La experiencia de 'Mark' bajó del 90% en algunos meses: rango de {min_p:.1f}% a {max_p:.1f}%.")
+
+    # Mostrar tabla con detalles de usuarios y conteos
+    df_detalle = pd.DataFrame(detalle_usuarios)
+    if not df_detalle.empty:
+        st.subheader("📋 Detalle de sentimientos por usuario y periodo")
+        st.dataframe(df_detalle.sort_values(["aniomes", "userid"]))
