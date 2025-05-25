@@ -35,184 +35,6 @@ db = client[os.getenv("DATABASE")]
 # client = MongoClient("TU_URI")
 # database = client["TU_BASE_DE_DATOS"]
 
-
-# Configurar conexión a MongoDB
-client = MongoClient(MONGO_URI)
-
-collection_usereminds_1 = db["userlists202505"]
-
-
-
-
-collection_usereminds_2 = db["userlists202504"]
-
-collection_usereminds_real = db["usereminds"]
-
-collection_suscriptions = db["suscriptions"]
-
-# Asignación de colecciones por mes
-collections = [
-    db["userlists202502"],  # febrero
-    db["userlists202503"],  # marzo
-    db["userlists202504"],  # abril
-    db["userlists202505"],  # mayo
-]
-
-
-
-
-
-# Obtener datos de la colección
-userlists_data = list(collection_usereminds_1.find({}, {"cdate": 1}))
-
-# Extraer las horas de los timestamps
-hours = [doc["cdate"].hour for doc in userlists_data if "cdate" in doc]
-
-# Contar ocurrencias por hora
-hour_counts = Counter(hours)
-hours_sorted = sorted(hour_counts.keys())
-counts_sorted = [hour_counts[hour] for hour in hours_sorted]
-
-# Crear la figura
-fig, ax = plt.subplots(figsize=(10, 5))
-ax.bar(hours_sorted, counts_sorted, color='skyblue')
-ax.set_xticks(range(24))
-ax.set_xlabel("Hora del día")
-ax.set_ylabel("Cantidad de interacciones")
-ax.set_title("Interacciones por Hora del Día")
-ax.grid(axis='y', linestyle='--', alpha=0.7)
-
-# Mostrar en Streamlit
-st.pyplot(fig)
-
-
-# Obtener datos de la colección
-userlists_data = list(collection_usereminds_1.find({}, {"cdate": 1}))
-
-# Extraer las horas de los timestamps
-hours = [doc["cdate"].hour for doc in userlists_data if "cdate" in doc]
-
-# Contar ocurrencias por hora
-hour_counts = Counter(hours)
-hours_sorted = sorted(hour_counts.keys())
-counts_sorted = [hour_counts[hour] for hour in hours_sorted]
-
-# Crear gráfica interactiva con Plotly
-fig = px.bar(
-    x=hours_sorted, 
-    y=counts_sorted, 
-    labels={'x': 'Hora del día', 'y': 'Cantidad de interacciones'}, 
-    title="Interacciones por Hora del Día",
-    text_auto=True
-)
-
-# Mostrar en Streamlit
-st.plotly_chart(fig, use_container_width=True)
-
-
-
-# Obtener datos de la colección
-userlists_data = list(collection_usereminds_1.find({}, {"cdate": 1}))
-
-# Mapeo de días de la semana
-dias_semana = ["L", "M", "X", "J", "V", "S", "D"]
-
-# Extraer los días de la semana
-dias = [dias_semana[doc["cdate"].weekday()] for doc in userlists_data if "cdate" in doc]
-
-# Contar ocurrencias por día
-dias_counts = Counter(dias)
-dias_sorted = ["L", "M", "X", "J", "V", "S", "D"]  # Orden correcto
-counts_sorted = [dias_counts[dia] for dia in dias_sorted]
-
-# Crear gráfica interactiva con Plotly
-fig = px.bar(
-    x=dias_sorted, 
-    y=counts_sorted, 
-    labels={'x': 'Día de la semana', 'y': 'Cantidad de interacciones'}, 
-    title="Interacciones por Día de la Semana",
-    text_auto=True
-)
-
-# Mostrar en Streamlit
-st.plotly_chart(fig, use_container_width=True)
-
-# Función para obtener los datos de MongoDB
-def obtener_datos_actividad():
-    hoy = datetime.utcnow()
-    primer_dia = datetime(hoy.year, hoy.month, 1)
-    
-    pipeline = [
-        {"$match": {"userid": {"$nin": [
-            "whatsapp:+5212741410473", 
-            "whatsapp:+5212292271390", 
-            "whatsapp:+5212292071173"
-        ]}
-        
-        ,"userprompt": { "$nin":["¿Alguna notificación nueva para mi?"]}
-
-        }}, 
-        {"$project": {
-            "hour": {"$hour": "$cdate"},
-            "day_of_week": {"$dayOfWeek": "$cdate"}  # 1=Sunday, 2=Monday, ..., 7=Saturday
-        }},
-        {"$group": {
-            "_id": {"day_of_week": "$day_of_week", "hour": "$hour"},
-            "count": {"$sum": 1}
-        }},
-        {"$sort": {"_id.day_of_week": 1, "_id.hour": 1}}
-    ]
-    
-    data = list(collection_usereminds_1.aggregate(pipeline))
-    
-    if not data:
-        return pd.DataFrame(columns=["Dia de la semana", "Hora", "Actividad"])
-    
-    # Crear el DataFrame
-    df = pd.DataFrame(data)
-    df['Dia de la semana'] = df['_id'].apply(lambda x: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][x['day_of_week'] - 1])
-    df['Hora'] = df['_id'].apply(lambda x: x['hour'])
-    df['Actividad'] = df['count']
-    
-    return df[['Dia de la semana', 'Hora', 'Actividad']]
-
-# Construcción de la interfaz en Streamlit
-st.title("📊 Actividad de los usuarios: Días de la semana y Horas")
-
-# Botón para actualizar datos
-if st.button("Actualizar Datos de Actividad", key="actualizar_datos_actividad"):
-    df_actividad = obtener_datos_actividad()
-    st.success("Datos actualizados correctamente.")
-else:
-    df_actividad = obtener_datos_actividad()
-
-# Mostrar la gráfica de burbujas si hay datos
-if not df_actividad.empty:
-    fig_actividad = px.scatter(df_actividad, 
-                               x='Dia de la semana', 
-                               y='Hora', 
-                               size='Actividad', 
-                               size_max=30,  # Ajusta el tamaño máximo de las burbujas
-                               color='Actividad', 
-                               hover_data=['Actividad'], 
-                               title='Concentración de actividad de usuarios por día de la semana y hora',
-                               labels={'Dia de la semana': 'Día de la semana', 'Hora': 'Hora', 'Actividad': 'Actividad de usuarios'},
-                               template="seaborn")
-
-    # Ajustar el layout
-    fig_actividad.update_layout(
-        width=800, 
-        height=600, 
-        showlegend=False, 
-        xaxis_title="Día de la semana", 
-        yaxis_title="Hora del día",
-        title="Concentración de actividad de usuarios por día de la semana y hora"
-    )
-    
-    st.plotly_chart(fig_actividad)
-else:
-    st.warning("No hay datos disponibles para mostrar.")
-
 ###########################################################################################
 #################Grafica de asunción para medir el uso de notificaciones###################
 ###########################################################################################
@@ -255,6 +77,8 @@ df["porcentaje"] = (df["total"] / df["total_mes"]) * 100
 
 # 6. Graficar barras apiladas por 'type' para cada periodo (año+mes)
 st.title("📊 Consumo por tipo de interacción (últimos 3 meses).")
+st.write("Asunción: El servicio de las notificaciones o recordatorios automáticos, será consumida de un 50% a un 90% por los usuarios, en los primeros 3 meses.")
+st.write("Asunción: Las tareas será lo más consultado por los usuarios hasta en un 70% más que otras funciones.")
 df["aniomes"] = df["aniomes"].astype(str).str.strip()
 
 orden_aniomes = sorted(fechas_aniomes)
@@ -284,34 +108,33 @@ fig.update_layout(
 
 st.plotly_chart(fig)
 
-# 7. Conclusión específica para 'Notify'
+# 7. Estado actual específica para 'Notify'
 df_notify = df[df["type"] == "Notify"]
 min_uso = df_notify["porcentaje"].min() if not df_notify.empty else 0
 max_uso = df_notify["porcentaje"].max() if not df_notify.empty else 0
 
-st.subheader("📌 Conclusión sobre 'Notify'")
-st.write("Asunción: El servicio de las notificaciones o recordatorios automáticos, será consumida de un 50% a un 90% por los usuarios, en los primeros 3 meses.")
+st.subheader("📌 Estado actual sobre 'Notify'")
 if min_uso >= 50 and max_uso <= 90:
-    st.success(f"✅ El consumo de 'Notify' se encuentra dentro del rango estimado (50%-90%): de {min_uso:.1f}% a {max_uso:.1f}%.")
+    st.success(f"✅ Se cumple. El consumo de 'Notify' se encuentra dentro del rango estimado (50%-90%): de {min_uso:.1f}% a {max_uso:.1f}%.")
 elif df_notify.empty:
     st.error("❌ No se encontraron registros del tipo 'Notify' en los últimos 3 meses.")
 else:
-    st.warning(f"⚠️ El consumo de 'Notify' está fuera del rango: de {min_uso:.1f}% a {max_uso:.1f}%.")
+    st.warning(f"⚠️ No se cumple. El consumo de 'Notify' está fuera del rango: de {min_uso:.1f}% a {max_uso:.1f}%.")
 
 
-# 7b. Conclusión específica para 'Tarea' (o el tipo que uses)
+# 7b. Estado actual específica para 'Tarea' (o el tipo que uses)
 df_tareas = df[df["type"] == "Task"]  # Ajusta el nombre si usas otro tipo exacto
 min_uso_tareas = df_tareas["porcentaje"].min() if not df_tareas.empty else 0
 max_uso_tareas = df_tareas["porcentaje"].max() if not df_tareas.empty else 0
 
-st.subheader("📌 Conclusión sobre 'Task'")
-st.write("Asunción: Las tareas será lo más consultado por los usuarios hasta en un 70% más que otras funciones.")
+st.subheader("📌 Estado actual sobre 'Task'")
+
 if max_uso_tareas >= 70:
-    st.success(f"✅ Las tareas son lo más consultado por los usuarios, con un consumo máximo de {max_uso_tareas:.1f}%, que es hasta un 70% más que otras funciones.")
+    st.success(f"✅ Se cumple. Las tareas son lo más consultado por los usuarios, con un consumo máximo de {max_uso_tareas:.1f}%, que es hasta un 70% más que otras funciones.")
 elif df_tareas.empty:
     st.error("❌ No se encontraron registros del tipo 'Task' en los últimos 3 meses.")
 else:
-    st.warning(f"ℹ️ Las tareas tienen un consumo menor al 70% ({max_uso_tareas:.1f}%).")
+    st.warning(f"⚠️ No se cumple. Las tareas tienen un consumo menor al 70% ({max_uso_tareas:.1f}%).")
 
 ###########################################################################################
 #################Grafica de asunción para medir felicidad de usuarios######################
@@ -390,7 +213,7 @@ else:
     df_final["porcentaje_felices"] = (df_final["usuarios_felices"] / df_final["total_usuarios"]) * 100
     
     st.title("📊 Experiencia de usuarios 'Mark' (últimos 3 meses)")
-    
+    st.write("Asunción: El servicio 'Mark' mantendrá una calificación buena a excelente en al menos el 90% de los usuarios en los últimos 3 meses.")
     # Asegurar que aniomes sea string
     df_final["aniomes"] = df_final["aniomes"].astype(str)
     
@@ -424,12 +247,11 @@ else:
     min_p = df_final["porcentaje_felices"].min()
     max_p = df_final["porcentaje_felices"].max()
     
-    st.subheader("📌 Conclusión sobre la experiencia en 'Mark'")
-    st.write("Asunción: El servicio 'Mark' mantendrá una calificación buena a excelente en al menos el 90% de los usuarios en los últimos 3 meses.")
+    st.subheader("📌 Estado actual sobre la experiencia en 'Mark'")
     if min_p >= 90:
-        st.success(f"✅ La experiencia de 'Mark' está dentro del rango esperado (>= 90%), con valores de {min_p:.1f}% a {max_p:.1f}%.")
+        st.success(f"✅ Se cumple. La experiencia de 'Mark' está dentro del rango esperado (>= 90%), con valores de {min_p:.1f}% a {max_p:.1f}%.")
     else:
-        st.warning(f"⚠️ La experiencia de 'Mark' bajó del 90% en algunos meses: rango de {min_p:.1f}% a {max_p:.1f}%.")
+        st.warning(f"⚠️ No se cumple. La experiencia de 'Mark' bajó del 90% en algunos meses: rango de {min_p:.1f}% a {max_p:.1f}%.")
 
     # Mostrar tabla con detalles de usuarios y conteos
     df_detalle = pd.DataFrame(detalle_usuarios)
