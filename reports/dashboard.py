@@ -70,7 +70,8 @@ def obtener_datos_series_un_mes():
             "userid": { "$nin": [
                 "whatsapp:+5212741410473", 
                 "whatsapp:+5212292271390", 
-                "whatsapp:+5212292071173"
+                "whatsapp:+5212292071173", 
+                "5212292468193"
             ]}
 
             ,"userprompt": { "$nin":["¿Alguna notificación nueva para mi?"]}
@@ -129,7 +130,8 @@ def obtener_datos_series():
             "userid": { "$nin": [
                 "whatsapp:+5212741410473", 
                 "whatsapp:+5212292271390", 
-                "whatsapp:+5212292071173"
+                "whatsapp:+5212292071173", 
+                "5212292468193"
             ]},
             "userprompt": { "$nin": ["¿Alguna notificación nueva para mi?"] }
         }},
@@ -188,7 +190,8 @@ def obtener_audiencia_diaria_de_un_mes():
         {"$match": {"userid": {"$nin": [
             "whatsapp:+5212741410473", 
             "whatsapp:+5212292271390", 
-            "whatsapp:+5212292071173"
+            "whatsapp:+5212292071173", 
+            "5212292468193"
         ]}
 
         ,"userprompt": { "$nin":["¿Alguna notificación nueva para mi?"]}
@@ -240,7 +243,8 @@ def obtener_audiencia_diaria():
                     "$nin": [
                         "whatsapp:+5212741410473", 
                         "whatsapp:+5212292271390", 
-                        "whatsapp:+5212292071173"
+                        "whatsapp:+5212292071173", 
+                        "5212292468193"
                     ]
                 },
                 "userprompt": {
@@ -383,7 +387,8 @@ def obtener_sentimientos_por_un_mes():
                     "$nin": [
                         "whatsapp:+5212741410473", 
                         "whatsapp:+5212292271390", 
-                        "whatsapp:+5212292071173"
+                        "whatsapp:+5212292071173", 
+                        "5212292468193"
                     ]
                 }
 
@@ -442,7 +447,8 @@ def obtener_sentimientos():
                         "$nin": [
                             "whatsapp:+5212741410473", 
                             "whatsapp:+5212292271390", 
-                            "whatsapp:+5212292071173"
+                            "whatsapp:+5212292071173", 
+                            "5212292468193"
                         ]
                     },
                     "userprompt": { "$nin": ["¿Alguna notificación nueva para mi?"] }
@@ -812,7 +818,8 @@ def obtener_datos_actividad():
         {"$match": {"userid": {"$nin": [
             "whatsapp:+5212741410473", 
             "whatsapp:+5212292271390", 
-            "whatsapp:+5212292071173"
+            "whatsapp:+5212292071173", 
+            "5212292468193"
         ]}
         
         ,"userprompt": { "$nin":["¿Alguna notificación nueva para mi?"]}
