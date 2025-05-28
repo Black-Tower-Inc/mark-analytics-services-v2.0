@@ -53,7 +53,7 @@ for col in colecciones_analizar:
     pipeline = [
         {"$match": {
             "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
-            "userid": {"$nin": ["5212292071173", "5212741410473", "5212292271390"]},
+            "userid": {"$nin": ["5212292071173", "5212741410473", "5212292271390", "5212292468193"]},
             "type": {"$ne": "Other"}
         }},
         {"$group": {"_id": "$type", "total": {"$sum": 1}}},  # Agrupa por 'type' contando documentos
@@ -160,7 +160,7 @@ for aniomes in fechas_aniomes:
     pipeline = [
         {"$match": {
             "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
-            "userid": {"$nin": ["5212292071173", "5212741410473", "5212292271390"]}
+            "userid": {"$nin": ["5212292071173", "5212741410473", "5212292271390", "5212292468193"]}
         }},
         {"$project": {
             "userid": 1,
