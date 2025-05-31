@@ -19,6 +19,15 @@ from pymongo import MongoClient
 from datetime import datetime
 from collections import Counter
 import matplotlib.pyplot as plt
+import phonenumbers
+from phonenumbers import geocoder, timezone, carrier
+from phonenumbers import geocoder, timezone, region_code_for_number
+import pycountry
+import altair as alt
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
 
 load_dotenv()
 
@@ -40,8 +49,6 @@ client = MongoClient(MONGO_URI)
 collection_usereminds_1 = db["userlists202505"]
 
 
-
-
 collection_usereminds_2 = db["userlists202504"]
 
 collection_usereminds_real = db["usereminds"]
@@ -57,9 +64,51 @@ collections = [
 ]
 
 
+def limpiar_prefijo(numero):
+    """Elimina un '1' adicional si está después del código de país."""
+    try:
+        numero_parseado = phonenumbers.parse(numero)
+        codigo_pais = numero_parseado.country_code
+        prefijo_pais = f"+{codigo_pais}"
+        
+        # Extraer la parte nacional del número
+        numero_nacional = numero[len(prefijo_pais):]  
+
+        if numero_nacional.startswith("1"):
+            return prefijo_pais + numero_nacional[1:]  # Elimina el '1' extra
+                    
+        return numero
+    
+    except Exception:
+
+        return numero  # Devuelve el número sin modificar en caso de error
+
+
+# Función auxiliar: obtener zona horaria estimada por número
+def obtener_informacion_numero(numero):
+    """Obtiene información del número: país, estado, zona horaria y hora actual."""
+    try:
+        if not numero.startswith("+"):
+
+            numero = "+" + numero
+
+            numero_limpio = limpiar_prefijo(numero)
+
+            numero_parseado = phonenumbers.parse(numero_limpio)
+
+            zonas_horarias = timezone.time_zones_for_number(numero_parseado)
+
+            return zonas_horarias[0] if zonas_horarias else "UTC"
+        
+    except Exception as e:
+
+
+        return "America/Mexico_City"
+
+
 # Función para obtener los datos de MongoDB y procesar los resultados
 def obtener_datos_series_un_mes():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(hoy.year, hoy.month, 1)
     
 
@@ -119,7 +168,7 @@ def obtener_datos_series_un_mes():
 
 
 def obtener_datos_series():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(2025, 2, 1)  # desde febrero 2025
 
     pipeline = [
@@ -470,6 +519,62 @@ def obtener_sentimientos():
     return df
 
 
+def obtener_datos_series_freecredits_users():
+
+    # Fechas
+    fecha_inicio = datetime(2025, 2, 1)
+
+    fecha_hoy = datetime.now()
+
+    # Pipeline para MongoDB
+    pipeline = [
+        {
+            "$match": {
+                "freecredits": {"$gt" : 0},
+                "phone": {
+                    "$nin": [
+                        "whatsapp:+5216641975849", "bautismen", "16315551181", "139", "whatsapp:+5212282452733", 
+                        "whatsapp:+5212281819194", "whatsapp:+5212299575809", "whatsapp:+5212291470698", 
+                        "whatsapp:+5212291699231", "16239800755", "whatsapp:+5212291016445", "whatsapp:+5214777873094",
+                        "whatsapp:+5212291400309", "whatsapp:+5219131021907", "whatsapp:+5212292071173", 
+                        "whatsapp:+5212741410473", "whatsapp:+5212291827438", "whatsapp:+5215568632305", 
+                        "whatsapp:+5212741423164", "whatsapp:+5215538373175", "whatsapp:+5212741015659", 
+                        "whatsapp:+5212297498880", "5212292071173","5212741410473","5212292271390","5212292468193"
+                    ]
+                }
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "phone": 1,
+                "start_date": 1,
+                "status": 1,
+                "subscription_id": 1,
+                "freecredits": 1
+            }
+        }
+    ]
+
+    # Consultar Mongo
+    data = list(collection_suscriptions.aggregate(pipeline))
+
+    if not data:
+        return pd.DataFrame(columns=["phone", "start_date", "status", "subscription_id", "freecredits"])
+
+    # Convertir a DataFrame
+    df = pd.DataFrame(data)
+
+
+    # # Convertir timestamp a datetime y zona horaria
+    df["fecha_alta_utc"] = pd.to_datetime(df["start_date"], unit="s", utc=True)
+
+
+    df = df[["phone", "fecha_alta_utc", "subscription_id", "status", "freecredits"]]
+
+    return df
+
+
 
 # Construcción de la interfaz en Streamlit
 st.title("📊 Dashboard de documentos generados Mark AI. 2025-2026")
@@ -484,10 +589,6 @@ else:
 # Mostrar tabla con los datos
 st.write("### Datos extraídos de MongoDB")
 st.dataframe(df)
-
-
-
-
 
 
 
@@ -628,47 +729,6 @@ if not df_series.empty:
     st.plotly_chart(fig_series)
 else:
     st.warning("No hay datos disponibles para mostrar.")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -879,3 +939,339 @@ if not df_actividad.empty:
 else:
     st.warning("No hay datos disponibles para mostrar.")
 
+
+
+
+# Cosntrucción de la interfaz en Streamlit
+st.title("📊 Créditos usuarios")
+
+# Botón para actualizar datos
+if st.button("Actualizar Datos", key="actualizar_datos_series_freecredits_users"):
+    df_series = obtener_datos_series_freecredits_users()
+    st.success("Datos actualizados correctamente.")
+else:
+    df_series = obtener_datos_series_freecredits_users()
+
+# Mostrar la gráfica si hay datos
+if not df_series.empty:
+    # Crear gráfica de líneas para mostrar la tendencia de los tipos de documento por día
+
+ 
+    # Asegúrate de que la columna sea datetime
+    if not pd.api.types.is_datetime64_any_dtype(df_series["fecha_alta_utc"]):
+        df_series["fecha_alta_utc"] = pd.to_datetime(df_series["fecha_alta_utc"], errors='coerce')
+
+    # Crear columna de solo fecha
+    df_series["fecha"] = df_series["fecha_alta_utc"].dt.date
+
+    conteo_diario = df_series.groupby("fecha").size().reset_index(name="nuevos_usuarios")
+
+    st.title("Usuarios con 100 créditos desde febrero 2025")
+
+    chart = alt.Chart(conteo_diario).mark_line(point=True).encode(
+        x="fecha:T",
+        y="nuevos_usuarios:Q",
+        tooltip=["fecha", "nuevos_usuarios"]
+    ).properties(width=700, height=400)
+
+    st.altair_chart(chart)
+
+ 
+
+ 
+
+    # Crear columna de solo fecha
+    df_series["fecha"] = df_series["fecha_alta_utc"].dt.date
+
+    # Agregar etiquetas según estado de créditos
+    df_series["estado_credito"] = df_series["freecredits"].apply(
+        lambda x: "100 créditos intactos" if x == 100 else "Créditos consumidos"
+    )
+
+    # Agrupar por fecha y estado de crédito
+    conteo_combinado = (
+        df_series.groupby(["fecha", "estado_credito"])
+        .size()
+        .reset_index(name="cantidad")
+    )
+
+    # Gráfica combinada
+    st.subheader("📊 Evolución de usuarios según uso de créditos")
+    chart_combinado = alt.Chart(conteo_combinado).mark_line(point=True).encode(
+        x="fecha:T",
+        y="cantidad:Q",
+        color="estado_credito:N",
+        tooltip=["fecha", "estado_credito", "cantidad"]
+    ).properties(width=750, height=400)
+
+    st.altair_chart(chart_combinado)
+
+
+
+    # 📊 Gráfica de puntos individuales con teléfonos
+    st.subheader("📈 Usuarios con crédito (por teléfono)")
+
+    chart_por_usuario = alt.Chart(df_series).mark_circle(size=100).encode(
+        x="fecha:T",
+        y=alt.Y("estado_credito:N", title="Estado de créditos"),
+        color="estado_credito:N",
+        tooltip=["phone", "fecha_alta_utc", "freecredits"]
+    ).properties(width=750, height=400)
+
+    st.altair_chart(chart_por_usuario)
+
+
+
+    # Filtrar usuarios con créditos > 0 (excluye 0)
+    df_filtrado = df_series[df_series["freecredits"] > 0].copy()
+
+    # Crear columna para estado créditos
+    df_filtrado["estado_credito"] = df_filtrado["freecredits"].apply(
+        lambda x: "100 créditos intactos" if x == 100 else "Créditos consumidos"
+    )
+
+    # Crear columna solo fecha para agrupar
+    df_filtrado["fecha"] = df_filtrado["fecha_alta_utc"].dt.date
+
+    # Conteo diario por estado de crédito
+    conteo_diario = df_filtrado.groupby(["fecha", "estado_credito"]).size().reset_index(name="usuarios")
+
+    # Selección para interactividad
+    selection = alt.selection_point(fields=["fecha", "estado_credito"], empty="all")
+
+    # Gráfica de barras apiladas
+    bar_chart = alt.Chart(conteo_diario).mark_bar().encode(
+        x=alt.X("fecha:T", title="Fecha"),
+        y=alt.Y("usuarios:Q", title="Número de usuarios"),
+        color=alt.Color("estado_credito:N", title="Estado de crédito"),
+        tooltip=["fecha", "estado_credito", "usuarios"],
+        opacity=alt.condition(selection, alt.value(1), alt.value(0.6))
+    ).add_params(selection).properties(
+        width=700,
+        height=400,
+        title="Usuarios con créditos (excluyendo 0) por fecha y estado"
+    )
+
+    st.altair_chart(bar_chart)
+
+    # Mostrar teléfonos filtrados según selección
+    if selection:
+        # Para que funcione en Streamlit, capturamos la selección con bind o workaround (más simple es filtrar con checkbox)
+        st.subheader("📱 Números de teléfono según selección")
+
+        # Como Altair + Streamlit no captura selección directamente, aquí mostramos todo agrupado o con filtro externo
+        # Para ejemplo, mostramos la tabla completa agrupada
+
+        # Mostrar tabla de teléfonos con créditos >0
+        st.dataframe(
+            df_filtrado[["phone", "freecredits", "fecha_alta_utc", "estado_credito"]]
+            .sort_values(by=["fecha_alta_utc", "estado_credito"])
+            .reset_index(drop=True)
+        )
+
+        # Filtros interactivos
+        st.subheader("🔍 Filtros")
+
+        # Rango de fechas
+        fecha_min = df_series["fecha_alta_utc"].min().date()
+        fecha_max = df_series["fecha_alta_utc"].max().date()
+        fecha_rango = st.date_input(
+            "Selecciona el rango de fechas",
+            value=(fecha_min, fecha_max),
+            min_value=fecha_min,
+            max_value=fecha_max
+        )
+
+        # Estado de crédito
+        mostrar_consumidos = st.checkbox("Mostrar créditos consumidos (< 100)", value=True)
+        mostrar_intactos = st.checkbox("Mostrar créditos intactos (= 100)", value=True)
+
+        # Aplicar filtros
+        df_filtrado = df_series.copy()
+        df_filtrado["fecha_alta_utc"] = pd.to_datetime(df_filtrado["fecha_alta_utc"])
+        df_filtrado["fecha_alta_date"] = df_filtrado["fecha_alta_utc"].dt.date
+
+        df_filtrado = df_filtrado[
+            (df_filtrado["fecha_alta_date"] >= fecha_rango[0]) &
+            (df_filtrado["fecha_alta_date"] <= fecha_rango[1])
+        ]
+
+        if not mostrar_consumidos:
+            df_filtrado = df_filtrado[df_filtrado["freecredits"] == 100]
+        if not mostrar_intactos:
+            df_filtrado = df_filtrado[df_filtrado["freecredits"] < 100]
+
+        # Excluir los que tienen 0 créditos
+        df_filtrado = df_filtrado[df_filtrado["freecredits"] > 0]
+
+        # Clasificar estado de créditos
+        df_filtrado["estado_credito"] = df_filtrado["freecredits"].apply(
+            lambda x: "100 créditos intactos" if x == 100 else "Créditos consumidos"
+        )
+
+        # Ordenar por fecha para mejor visualización
+        df_filtrado = df_filtrado.sort_values(by="fecha_alta_utc")
+
+        # Gráfico de líneas
+        st.subheader("📈 Créditos por teléfono (líneas)")
+
+        grafica = alt.Chart(df_filtrado).mark_line(point=True).encode(
+            x=alt.X("phone:N", title="Teléfono", sort=None, axis=alt.Axis(labelAngle=-45)),
+            y=alt.Y("freecredits:Q", title="Créditos disponibles"),
+            color=alt.Color("estado_credito:N", title="Estado"),
+            tooltip=["phone", "freecredits", "fecha_alta_utc"]
+        ).properties(
+            width=900,
+            height=500
+        )
+
+        st.altair_chart(grafica)
+
+        st.subheader("📈 Créditos por teléfono agrupados por fecha de alta")
+
+        # Asegurarse de que fecha_alta_utc es datetime y obtener solo la fecha
+        df_filtrado["fecha_alta"] = pd.to_datetime(df_filtrado["fecha_alta_utc"]).dt.date
+
+        # Excluir los que tienen 0 créditos
+        df_plot = df_filtrado[df_filtrado["freecredits"] > 0]
+
+        # Gráfico de líneas con puntos y etiquetas por teléfono
+        line_chart = alt.Chart(df_plot).mark_line(point=True).encode(
+            x=alt.X("fecha_alta:T", title="Fecha de alta"),
+            y=alt.Y("freecredits:Q", title="Créditos disponibles"),
+            color=alt.Color("phone:N", title="Teléfono"),
+            tooltip=["phone", "freecredits", "fecha_alta"]
+        ).properties(width=700, height=400)
+
+        # Agregar etiquetas de teléfono en los puntos
+        text_labels = alt.Chart(df_plot).mark_text(
+            align='left',
+            dx=5,
+            dy=-5,
+            fontSize=10
+        ).encode(
+            x="fecha_alta:T",
+            y="freecredits:Q",
+            text="phone:N",
+            color=alt.Color("phone:N", legend=None)
+        )
+
+        # Mostrar ambos
+        st.altair_chart(line_chart + text_labels, use_container_width=True)
+
+
+        st.subheader("📊 Dispersión de créditos por teléfono")
+
+        # Asegurar formato correcto
+        df_filtrado["fecha_alta"] = pd.to_datetime(df_filtrado["fecha_alta_utc"]).dt.date
+
+        # Filtrar los que tienen más de 0 créditos
+        df_dispersión = df_filtrado[df_filtrado["freecredits"] > 0]
+
+        # Gráfico de dispersión
+        scatter = alt.Chart(df_dispersión).mark_circle(size=100).encode(
+            x=alt.X("fecha_alta:T", title="Fecha de alta"),
+            y=alt.Y("freecredits:Q", title="Créditos disponibles"),
+            color=alt.Color("phone:N", title="Teléfono"),
+            tooltip=["phone", "freecredits", "fecha_alta"]
+        ).properties(width=800, height=400)
+
+        # Etiquetas con los teléfonos
+        labels = alt.Chart(df_dispersión).mark_text(
+            align='center',
+            dy=-12,
+            fontSize=10
+        ).encode(
+            x="fecha_alta:T",
+            y="freecredits:Q",
+            text="phone:N",
+            color=alt.Color("phone:N", legend=None)
+        )
+
+        # Mostrar gráfico combinado
+        st.altair_chart(scatter + labels, use_container_width=True)
+
+
+
+        st.subheader("📈 Dispersión y regresión: Créditos vs Fecha de alta")
+
+        # Asegurar tipo de fecha
+        df_filtrado["fecha_alta"] = pd.to_datetime(df_filtrado["fecha_alta_utc"]).dt.date
+
+        # Solo con créditos > 0
+        df_dispersión = df_filtrado[df_filtrado["freecredits"] > 0]
+
+        # Gráfico de dispersión
+        puntos = alt.Chart(df_dispersión).mark_circle(size=80).encode(
+            x=alt.X("fecha_alta:T", title="Fecha de alta"),
+            y=alt.Y("freecredits:Q", title="Créditos disponibles"),
+            color=alt.Color("phone:N", title="Teléfono"),
+            tooltip=["phone", "freecredits", "fecha_alta"]
+        )
+
+        # Línea de regresión (polinómica de grado 2 para detectar curvatura/tendencia)
+        regresion = puntos.transform_regression(
+            "fecha_alta",
+            "freecredits",
+            method="poly",
+            order=2,
+            as_=["fecha_alta", "freecredits"]
+        ).mark_line(color="black")
+
+        # Etiquetas con teléfono
+        etiquetas = alt.Chart(df_dispersión).mark_text(
+            align='center',
+            dy=-10,
+            fontSize=9
+        ).encode(
+            x="fecha_alta:T",
+            y="freecredits:Q",
+            text="phone:N",
+            color=alt.Color("phone:N", legend=None)
+        )
+
+        # Mostrar todo
+        st.altair_chart((puntos + regresion + etiquetas).properties(width=800, height=400), use_container_width=True)
+
+
+
+        st.subheader("📊 Dispersión con línea de regresión")
+
+        # Asegurar formato de fecha
+        df_filtrado["fecha_alta"] = pd.to_datetime(df_filtrado["fecha_alta_utc"]).dt.date
+
+        # Solo créditos > 0
+        df_dispersión = df_filtrado[df_filtrado["freecredits"] > 0].copy()
+
+        # Convertir fecha a ordinal para regresión lineal (Altair necesita numérico)
+        df_dispersión["fecha_ordinal"] = pd.to_datetime(df_dispersión["fecha_alta"]).map(pd.Timestamp.toordinal)
+
+        # Puntos
+        puntos = alt.Chart(df_dispersión).mark_point(filled=True, color='steelblue').encode(
+            x=alt.X("fecha_ordinal:Q", title="Fecha (ordinal)"),
+            y=alt.Y("freecredits:Q", title="Créditos disponibles"),
+            tooltip=["phone", "freecredits", "fecha_alta"]
+        )
+
+        # Línea de regresión lineal
+        regresion = puntos.transform_regression(
+            "fecha_ordinal", "freecredits",
+            method="linear"
+        ).mark_line(color='red')
+
+        # Eje con fechas reales
+        ticks = alt.Axis(format='%Y-%m-%d')
+
+        # Combinar gráfico y ajustar eje x con fechas legibles
+        final_chart = (puntos + regresion).encode(
+            x=alt.X("fecha_ordinal:Q", axis=ticks, title="Fecha")
+        ).properties(width=700, height=400)
+
+        st.altair_chart(final_chart, use_container_width=True)
+
+
+
+
+else:
+    
+    st.warning("No hay datos disponibles para mostrar.")
