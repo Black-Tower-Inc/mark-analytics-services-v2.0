@@ -58,12 +58,15 @@ st.markdown("""
 
 load_dotenv()
 
+# mongo_uri = st.secrets["DB"]["URIMONGODB"]
+# db_name = st.secrets["DB"]["DATABASE"]
+
 # Conexión a MongoDB
-MONGO_URI = os.getenv("URIMONGODB") 
+MONGO_URI = st.secrets["DB"]["URIMONGODB"] #os.getenv("URIMONGODB") 
 
 client = MongoClient(MONGO_URI)
 
-db = client[os.getenv("DATABASE")]
+db = client[st.secrets["DB"]["DATABASE"]]
 
 # # Conexión MongoDB
 # client = MongoClient("TU_URI")
@@ -1529,12 +1532,12 @@ st.pyplot(fig)
 
 #probando valores para epsilon
 
-for eps_val in [0.5, 1, 1.5, 2]:
-    dbscan = DBSCAN(eps=eps_val, min_samples=5)
-    clusters = dbscan.fit_predict(X)
-    n_clusters = len(set(clusters)) - (1 if -1 in clusters else 0)
-    n_noise = list(clusters).count(-1)
-    print(f"eps={eps_val} -> Clusters: {n_clusters}, Ruido: {n_noise}")
+# for eps_val in [0.5, 1, 1.5, 2]:
+#     dbscan = DBSCAN(eps=eps_val, min_samples=5)
+#     clusters = dbscan.fit_predict(X)
+#     n_clusters = len(set(clusters)) - (1 if -1 in clusters else 0)
+#     n_noise = list(clusters).count(-1)
+#     print(f"eps={eps_val} -> Clusters: {n_clusters}, Ruido: {n_noise}")
 
 
 
