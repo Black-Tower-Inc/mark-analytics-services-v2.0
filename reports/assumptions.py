@@ -33,7 +33,7 @@ MONGO_URI = st.secrets["DB"]["URIMONGODB"]
 
 client = MongoClient(MONGO_URI)
 
-db = client[st.secrets["DB"]["URIMONGODB"]]
+db = client[st.secrets["DB"]["DATABASE"]]
 
 # # Conexión MongoDB
 # client = MongoClient("TU_URI")
