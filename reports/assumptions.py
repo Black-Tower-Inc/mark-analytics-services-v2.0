@@ -258,3 +258,92 @@ else:
     if not df_detalle.empty:
         st.subheader("📋 Detalle de sentimientos por usuario y periodo")
         st.dataframe(df_detalle.sort_values(["aniomes", "userid"]))
+
+
+###########################################################################################
+#################Grafica de asunción para medir el uso de Mark el fin de semana############
+###########################################################################################
+# 1. Obtener datos como antes
+registros = []
+for col in colecciones_analizar:
+    pipeline = [
+        {
+            "$match": {
+                "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
+                "userid": {
+                    "$nin": [
+                        "5212292071173",
+                        "5212741410473",
+                        "5212292271390",
+                        "5212292468193",
+                    ]
+                },
+            }
+        }
+    ]
+
+    for doc in col.aggregate(pipeline):
+        fecha = doc.get("cdate") or doc.get("timestamp")
+        if fecha:
+            fecha = fecha if isinstance(fecha, datetime) else fecha["$date"]
+            isocal = fecha.isocalendar()
+            registros.append({
+                "fecha": fecha,
+                "año": isocal.year,
+                "semana": isocal.week,
+                "dia_semana": fecha.weekday(),
+                "categoria_dia": "Entre semana" if fecha.weekday() < 5 else "Fin de semana"
+            })
+
+# 2. Crear DataFrame
+df = pd.DataFrame(registros)
+
+# 3. Agrupar por semana y tipo de día
+df["semana_id"] = df["año"].astype(str) + "-W" + df["semana"].astype(str).str.zfill(2)
+
+df_agrupado = df.groupby(["semana_id", "categoria_dia"]).size().reset_index(name="total")
+
+# 4. Calcular porcentaje semanal
+df_total_semana = df_agrupado.groupby("semana_id")["total"].sum().reset_index(name="total_semana")
+df_agrupado = df_agrupado.merge(df_total_semana, on="semana_id")
+df_agrupado["porcentaje"] = (df_agrupado["total"] / df_agrupado["total_semana"]) * 100
+
+# 5. Gráfico de área apilada
+st.title("📈 Consumo entre semana vs fin de semana por semana")
+st.write("Asunción: Entre semana se consume más Mark que en el fin de semana (por semana, últimos 3 meses).")
+
+fig = px.area(
+    df_agrupado,
+    x="semana_id",
+    y="porcentaje",
+    color="categoria_dia",
+    line_group="categoria_dia",
+    groupnorm="percent",
+    title="Distribución porcentual del consumo por semana",
+    labels={"semana_id": "Semana", "porcentaje": "Porcentaje", "categoria_dia": "Día"}
+)
+
+fig.update_layout(xaxis=dict(type="category"))
+
+st.plotly_chart(fig)
+
+# 6. Evaluar cumplimiento por semana
+semanas = df["semana_id"].unique()
+df_semana = df_agrupado[df_agrupado["categoria_dia"] == "Entre semana"]
+df_finde = df_agrupado[df_agrupado["categoria_dia"] == "Fin de semana"]
+
+cumple = all(
+    df_semana[df_semana["semana_id"] == s]["porcentaje"].values[0] >
+    df_finde[df_finde["semana_id"] == s]["porcentaje"].values[0]
+    for s in semanas
+    if s in df_semana["semana_id"].values and s in df_finde["semana_id"].values
+)
+
+st.subheader("📌 Evaluación semanal de la asunción")
+
+if cumple:
+    st.success("✅ Se cumple. En todas las semanas, el consumo entre semana supera al del fin de semana.")
+elif df.empty:
+    st.error("❌ No se encontraron registros en las semanas analizadas.")
+else:
+    st.warning("⚠️ No se cumple. Hay semanas donde el consumo en fin de semana iguala o supera al de entre semana.")
