@@ -24,12 +24,16 @@ from dateutil.relativedelta import relativedelta
 
 load_dotenv()
 
+
+# mongo_uri = st.secrets["DB"]["URIMONGODB"]
+# db_name = st.secrets["DB"]["DATABASE"]
+
 # Conexión a MongoDB
-MONGO_URI = os.getenv("URIMONGODB") 
+MONGO_URI = st.secrets["DB"]["URIMONGODB"]
 
 client = MongoClient(MONGO_URI)
 
-db = client[os.getenv("DATABASE")]
+db = client[st.secrets["DB"]["DATABASE"]]
 
 # # Conexión MongoDB
 # client = MongoClient("TU_URI")
