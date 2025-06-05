@@ -117,7 +117,7 @@ df_notify = df[df["type"] == "Notify"]
 min_uso = df_notify["porcentaje"].min() if not df_notify.empty else 0
 max_uso = df_notify["porcentaje"].max() if not df_notify.empty else 0
 
-st.subheader("📌 Estado actual sobre 'Notify'")
+st.subheader("📌 Estado actual de la asunción sobre 'Notify'")
 if min_uso >= 50 and max_uso <= 90:
     st.success(f"✅ Se cumple. El consumo de 'Notify' se encuentra dentro del rango estimado (50%-90%): de {min_uso:.1f}% a {max_uso:.1f}%.")
 elif df_notify.empty:
@@ -131,7 +131,7 @@ df_tareas = df[df["type"] == "Task"]  # Ajusta el nombre si usas otro tipo exact
 min_uso_tareas = df_tareas["porcentaje"].min() if not df_tareas.empty else 0
 max_uso_tareas = df_tareas["porcentaje"].max() if not df_tareas.empty else 0
 
-st.subheader("📌 Estado actual sobre 'Task'")
+st.subheader("📌 Estado actual de la asunción sobre 'Task'")
 
 if max_uso_tareas >= 70:
     st.success(f"✅ Se cumple. Las tareas son lo más consultado por los usuarios, con un consumo máximo de {max_uso_tareas:.1f}%, que es hasta un 70% más que otras funciones.")
@@ -251,7 +251,7 @@ else:
     min_p = df_final["porcentaje_felices"].min()
     max_p = df_final["porcentaje_felices"].max()
     
-    st.subheader("📌 Estado actual sobre la experiencia en 'Mark'")
+    st.subheader("📌 Estado actual de la asunción ")
     if min_p >= 90:
         st.success(f"✅ Se cumple. La experiencia de 'Mark' está dentro del rango esperado (>= 90%), con valores de {min_p:.1f}% a {max_p:.1f}%.")
     else:
@@ -265,7 +265,7 @@ else:
 
 
 ###########################################################################################
-#################Grafica de asunción para medir el uso de Mark el fin de semana############
+#################Entre semana se consume más Mark que en el fin de semana.#################
 ###########################################################################################
 # 1. Obtener datos como antes
 registros = []
@@ -343,7 +343,7 @@ cumple = all(
     if s in df_semana["semana_id"].values and s in df_finde["semana_id"].values
 )
 
-st.subheader("📌 Evaluación semanal de la asunción")
+st.subheader("📌 Estado actual de la asunción")
 
 if cumple:
     st.success("✅ Se cumple. En todas las semanas, el consumo entre semana supera al del fin de semana.")
@@ -351,3 +351,139 @@ elif df.empty:
     st.error("❌ No se encontraron registros en las semanas analizadas.")
 else:
     st.warning("⚠️ No se cumple. Hay semanas donde el consumo en fin de semana iguala o supera al de entre semana.")
+
+
+###########################################################################################
+###Las personas que más frecuentan a Mark son las que más consumen notificaciones al mes.##
+###########################################################################################
+
+# 1. Obtener los últimos 3 periodos (año+mes) en formato 'YYYYMM'
+hoy = datetime.utcnow()
+fechas_aniomes = [(hoy - relativedelta(months=i)).strftime("%Y%m") for i in range(2, -1, -1)]
+
+# 2. Filtrar las colecciones válidas
+colecciones_analizar = {
+    aniomes: db[f"userlists{aniomes}"]
+    for aniomes in fechas_aniomes
+    if f"userlists{aniomes}" in db.list_collection_names()
+}
+
+# 3. Obtener los datos por mes
+registros = []
+for aniomes, col in colecciones_analizar.items():
+    pipeline = [
+        {
+            "$match": {
+                "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
+                "userid": {"$nin": ["5212292071173", "5212741410473", "5212292271390", "5212292468193"]},
+                "type": {"$ne": "Other"}
+            }
+        }
+    ]
+    for doc in col.aggregate(pipeline):
+        registros.append({
+            "userid": doc.get("userid"),
+            "type": doc.get("type"),
+            "aniomes": aniomes
+        })
+
+# 4. Crear DataFrame
+df = pd.DataFrame(registros)
+
+if df.empty:
+    st.warning("No hay datos para los periodos seleccionados.")
+else:
+    # 5. Identificar usuarios top por mes
+    df_mes = df.groupby(["aniomes", "userid"]).size().reset_index(name="interacciones")
+    top_usuarios_mes = df_mes.groupby("aniomes").apply(
+        lambda g: g[g["interacciones"] >= g["interacciones"].max() / 2]
+    ).reset_index(drop=True)
+
+    # 6. Filtrar los datos solo para usuarios top por mes
+    df_top = df.merge(top_usuarios_mes[["aniomes", "userid"]], on=["aniomes", "userid"])
+
+    # 7. Contar interacciones por mes, usuario y tipo
+    df_mes_usuario = df_top.groupby(["aniomes", "userid", "type"]).size().reset_index(name="count")
+
+    # 8. Pivot para análisis
+    df_pivot = df_mes_usuario.pivot_table(index=["aniomes", "userid"], columns="type", values="count", fill_value=0).reset_index()
+
+    # 9. Calcular total interacciones por usuario y mes
+    df_pivot["total"] = df_pivot.loc[:, df_pivot.columns.difference(["aniomes", "userid"])].sum(axis=1)
+
+    # 10. Determinar si cumple la asunción por usuario y mes: Notify > 50%
+    df_pivot["cumple_asuncion"] = df_pivot.get("Notify", 0) > (df_pivot["total"] / 2)
+
+    # 11. Evaluar si al menos la mitad de usuarios cumplen la asunción por mes
+    resultado_mes = df_pivot.groupby("aniomes").agg(
+        usuarios_total=("userid", "nunique"),
+        usuarios_cumplen=("cumple_asuncion", "sum")
+    ).reset_index()
+    resultado_mes["asuncion_cumple"] = resultado_mes["usuarios_cumplen"] >= (resultado_mes["usuarios_total"] / 2)
+
+    # 12. Preparar datos para gráfica de distribución por tipo
+    df_grafica = df_top.groupby(["aniomes", "type"]).size().reset_index(name="total")
+    df_total_mes = df_grafica.groupby("aniomes")["total"].sum().reset_index(name="total_mes")
+    df_grafica = df_grafica.merge(df_total_mes, on="aniomes")
+    df_grafica["porcentaje"] = (df_grafica["total"] / df_grafica["total_mes"]) * 100
+
+    # 13. Graficar barras apiladas
+    fig = px.bar(
+        df_grafica,
+        x="aniomes",
+        y="porcentaje",
+        color="type",
+        text=df_grafica["porcentaje"].apply(lambda x: f"{x:.1f}%"),
+        title="Distribución de tipos de interacción por periodo (YYYYMM) - Usuarios Top por Mes",
+        labels={"aniomes": "Periodo", "porcentaje": "Porcentaje de uso", "type": "Tipo"},
+        barmode="stack",
+        category_orders={"aniomes": fechas_aniomes}
+    )
+    fig.update_layout(
+        xaxis=dict(
+            type='category',
+            categoryorder='array',
+            categoryarray=fechas_aniomes,
+            tickmode='array',
+            tickvals=fechas_aniomes,
+            ticktext=fechas_aniomes
+        )
+    )
+
+    st.title("🔍 Interacciones de usuarios más activos por mes (últimos 3 meses)")
+    st.write("Asunción: Las personas que más frecuentan a Mark son las que más consumen notificaciones al mes.")
+    st.plotly_chart(fig)
+
+    # 14. Mostrar evaluación de la asunción por mes
+    st.subheader("📌 Estado actual de la asunción")
+    for _, fila in resultado_mes.iterrows():
+        mes = fila["aniomes"]
+        cumple = fila["asuncion_cumple"]
+        porcentaje = (fila["usuarios_cumplen"] / fila["usuarios_total"]) * 100 if fila["usuarios_total"] > 0 else 0
+        if cumple:
+            st.success(
+                f"✅ En {mes} se cumple la asunción entre los usuarios que más utilizan a Mark. "
+                f"{porcentaje:.1f}% de ellos tienen más del 50% de sus interacciones del tipo Notify."
+            )
+        else:
+            st.warning(
+                f"⚠️ En {mes} NO se cumple la asunción entre los usuarios que más utilizan a Mark. "
+                f"Solo {porcentaje:.1f}% de ellos tienen más del 50% de sus interacciones del tipo Notify."
+            )
+
+    # 15. Tabla de detalle por usuario
+    df_pivot["periodo"] = pd.to_datetime(df_pivot["aniomes"], format="%Y%m").dt.strftime("%m/%Y")
+    tipos = [col for col in df_pivot.columns if col not in ['aniomes', 'userid', 'total', 'periodo', 'cumple_asuncion']]
+    cols_orden = ['periodo', 'userid'] + tipos + ['total']
+    df_mostrar = df_pivot[cols_orden].rename(columns={'userid': 'usuario'})
+
+    st.subheader("📊 Detalle de interacciones por usuario y periodo (ordenado)")
+
+    # Ordenar
+    df_mostrar = df_mostrar.sort_values(by=['periodo', 'total'], ascending=[False, False])
+
+    # Reemplazar ceros con vacío
+    df_mostrar = df_mostrar.replace(0, "")
+
+    # Mostrar tabla sin estilos ni colores
+    st.dataframe(df_mostrar)
