@@ -14,17 +14,22 @@ import os
 import pytz
 import pandas as pd
 import streamlit as st
+from database.mongodb import MongoDB
 # Tema oscuro visual
 st.set_page_config(page_title="Trazabilidad por Usuario", layout="wide")
 
 import plotly.express as px
 from dotenv import load_dotenv
-from pymongo import MongoClient
+
 from datetime import datetime
 from collections import Counter
 import matplotlib.pyplot as plt
 from streamlit_plotly_events import plotly_events
-
+# import streamlit as st
+from sklearn.neighbors import NearestNeighbors
+import numpy as np
+import matplotlib.pyplot as plt
+import altair as alt
 
 #import streamlit as st
 #import pandas as pd
@@ -36,9 +41,6 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.cluster import DBSCAN
 from sklearn.decomposition import PCA
-
-
-
 
 import calendar
 
@@ -62,11 +64,11 @@ load_dotenv()
 # db_name = st.secrets["DB"]["DATABASE"]
 
 # Conexión a MongoDB
-MONGO_URI = st.secrets["DB"]["URIMONGODB"] #os.getenv("URIMONGODB") 
+#MONGO_URI = st.secrets["DB"]["URIMONGODB"] #os.getenv("URIMONGODB") 
 
-client = MongoClient(MONGO_URI)
+#client = MongoClient(MONGO_URI)
 
-db = client[st.secrets["DB"]["DATABASE"]]
+#db = client[st.secrets["DB"]["DATABASE"]]
 
 # # Conexión MongoDB
 # client = MongoClient("TU_URI")
@@ -74,27 +76,28 @@ db = client[st.secrets["DB"]["DATABASE"]]
 
 
 # Configurar conexión a MongoDB
-client = MongoClient(MONGO_URI)
+#client = MongoClient(MONGO_URI)
 
-collection_usereminds_1 = db["userlists202506"]
+collection_usereminds_1 = MongoDB.get_usereminds_by_month("202506")
 
+collection_usereminds_2 = MongoDB.get_usereminds_by_month("202504")
 
+collection_usereminds_real = MongoDB.get_collection_usereminds_real()
 
-
-collection_usereminds_2 = db["userlists202504"]
-
-collection_usereminds_real = db["usereminds"]
-
-collection_suscriptions = db["suscriptions"]
+collection_suscriptions = MongoDB.get_collection_suscriptions()
 
 # Asignación de colecciones por mes
 collections = [
-    db["userlists202502"],  # febrero
-    db["userlists202503"],  # marzo
-    db["userlists202504"],  # abril
-    db["userlists202505"],  # mayo
-    db["userlists202506"]  # mayo
+    MongoDB.get_usereminds_by_month("202502"),  # febrero
+    MongoDB.get_usereminds_by_month("202503"),  # marzo
+    MongoDB.get_usereminds_by_month("202504"),  # abril
+    MongoDB.get_usereminds_by_month("202505"),  # mayo
+    MongoDB.get_usereminds_by_month("202506")  # mayo
 ]
+
+collections_all_userminds = MongoDB.get_all_usereminds_collections()
+
+
 
 
 # Función para obtener los datos de MongoDB y procesar los resultados
@@ -239,7 +242,7 @@ def obtener_datos_series():
     return df
 
 def obtener_audiencia_diaria_de_un_mes():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(hoy.year, hoy.month, 1)
 
     pipeline = [
@@ -339,8 +342,8 @@ def obtener_audiencia_diaria():
 
     resultados = []
 
-    for col in colecciones:
-        collection = db[col]
+    for collection in collections:
+        #collection = db[col]
         resultados.extend(list(collection.aggregate(pipeline_base)))
 
     if not resultados:
@@ -490,11 +493,12 @@ zona = "America_Mexico_City"  # Ajusta según tu zona
 # database = client["TU_BASE_DE_DATOS"]
 
 def obtener_sentimientos():
+
     sentimiento_acumulado = {}
 
     for mes in meses:
 
-        coleccion = db[f"usereminds{mes}_{zona}"]
+       # coleccion = db[f"usereminds{mes}_{zona}"]
         
         pipeline = [
             {
@@ -518,7 +522,7 @@ def obtener_sentimientos():
             }
         ]
 
-        for doc in coleccion.aggregate(pipeline):
+        for doc in collections_all_userminds.aggregate(pipeline):
             mood = doc["_id"] or "Sin clasificar"
             sentimiento_acumulado[mood] = sentimiento_acumulado.get(mood, 0) + doc["count"]
 
@@ -529,6 +533,7 @@ def obtener_sentimientos():
         {"Sentimiento": key, "Conteo": value}
         for key, value in sorted(sentimiento_acumulado.items())
     ])
+
     return df
 
 
@@ -878,7 +883,7 @@ st.plotly_chart(fig, use_container_width=True)
 
 # Función para obtener los datos de MongoDB
 def obtener_datos_actividad():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(hoy.year, hoy.month, 1)
     
     pipeline = [
@@ -970,8 +975,8 @@ else:
 
 # # Conexión a MongoDB
 # client = pymongo.MongoClient("mongodb://localhost:27017/")  # Ajusta si usas credenciales/remoto
-db = client["arcobits"]
-collection = db["suscriptions"]
+#db = client["arcobits"]
+#collection = db["suscriptions"]
 
 # Fechas de febrero a junio 2025
 start_ts = int(datetime(2025, 2, 1).timestamp())
@@ -1001,7 +1006,7 @@ query = {
     "status": "active",
     "phone": {"$nin": excluded_users}
 }
-data = list(collection.find(query))
+data = list(collection_suscriptions.find(query))
 
 # Procesar resultados
 records = []
@@ -1062,7 +1067,7 @@ else:
 
 # Conexión
 #client = pymongo.MongoClient("mongodb://localhost:27017/")
-db = client["arcobits"]
+#db = client["arcobits"]
 
 # Rango de meses
 months = [2, 3, 4, 5, 6]
@@ -1081,14 +1086,16 @@ excluded_userids = [
 
 # Recolección de datos
 records = []
+
 for month in months:
     coll_name = f"userlists{year}{month:02d}"
-    if coll_name not in db.list_collection_names():
+
+    if coll_name not in collections_all_userminds:
         continue
 
-    coll = db[coll_name]
+    coll = coll_name
 
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(2025, 2, 1)
 
     query = {
@@ -1162,7 +1169,7 @@ else:
 
 
 
-    db = client["arcobits"]
+#db = client["arcobits"]
 
 # Rango de meses
 months = [2, 3, 4, 5, 6]
@@ -1183,10 +1190,11 @@ excluded_userids = [
 records = []
 for month in months:
     coll_name = f"userlists{year}{month:02d}"
-    if coll_name not in db.list_collection_names():
-        continue
 
-    coll = db[coll_name]
+    if coll_name not in collections_all_userminds:
+         continue
+
+    coll = coll_name
 
     query = {
         "userid": {"$nin": excluded_userids},
@@ -1264,7 +1272,7 @@ else:
 
 
 
-db = client["arcobits"]
+#db = client["arcobits"]
 
 # Configuración
 months_map = {
@@ -1301,12 +1309,14 @@ meses = [months_map[mes_seleccionado]] if months_map[mes_seleccionado] else [2, 
 
 # Recolección de datos
 records = []
+
 for month in meses:
     coll_name = f"userlists{year}{month:02d}"
-    if coll_name not in db.list_collection_names():
+
+    if coll_name not in collections_all_userminds:
         continue
 
-    coll = db[coll_name]
+    coll = coll_name
 
     query = {
         "userid": {"$nin": excluded_userids},
@@ -1378,13 +1388,15 @@ st.title("Segmentación de Clientes con DBSCAN")
 
 # Conexión MongoDB
 #client = MongoClient("mongodb://localhost:27017")
-db = client["arcobits"]
+#db = client["arcobits"]
 
 # Cargar datos de febrero a junio
 docs = []
 for month in range(2, 7):
-    coll_name = f"userlists2025{month:02d}"
-    collection = db[coll_name]
+    coll_name = f"2025{month:02d}"
+
+    collection = MongoDB.get_usereminds_by_month(coll_name)
+
     docs += list(collection.find({
         "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
         "userid": {"$nin": [
@@ -1429,7 +1441,7 @@ df["country"] = df["userid"].str[:2]
 df["region"] = df["userid"].str[2:6]
 
 # Freecredits desde suscriptions
-subs_df = pd.DataFrame(list(db["suscriptions"].find({}, {"phone": 1, "freecredits": 1, "_id": 0})))
+subs_df = pd.DataFrame(list(collection_suscriptions.find({}, {"phone": 1, "freecredits": 1, "_id": 0})))
 df = df.merge(subs_df, how="left", left_on="userid", right_on="phone")
 
 # Limpiar y seleccionar
@@ -1514,10 +1526,7 @@ st.dataframe(df.head(20))
 
 #Buscando el codo para eps
 
-import streamlit as st
-from sklearn.neighbors import NearestNeighbors
-import numpy as np
-import matplotlib.pyplot as plt
+
 
 # Supongamos que 'df' ya está preprocesado y tienes el preprocessor
 X = preprocessor.fit_transform(df)  # Tus datos preprocesados
@@ -1773,3 +1782,50 @@ st.pyplot(fig)
 
 #     st.title("📊 Burbujas por Usuario en el Tiempo")
 #     st.plotly_chart(fig)
+
+
+# Cosntrucción de la interfaz en Streamlit
+# st.markdown("""
+#     <h2 style='color: #ffffff; font-size: 3em; font-weight: bold; text-align: left;'>
+#     👥 Nuevos usuarios por día
+#     </h2>
+#     """, unsafe_allow_html=True)
+
+st.markdown("""
+    <h2>
+    👥 Nuevos usuarios por día
+    </h2>
+    """, unsafe_allow_html=True)
+
+
+# Botón para actualizar datos
+if st.button("Actualizar Datos", key="actualizar_datos_series_freecredits_users"):
+    df_series = obtener_datos_series_freecredits_users()
+    st.success("Datos actualizados correctamente.")
+else:
+    df_series = obtener_datos_series_freecredits_users()
+
+# Mostrar la gráfica si hay datos
+if not df_series.empty:
+    # Crear gráfica de líneas para mostrar la tendencia de los tipos de documento por día
+
+ 
+    # Asegúrate de que la columna sea datetime
+    if not pd.api.types.is_datetime64_any_dtype(df_series["fecha_alta_utc"]):
+
+        df_series["fecha_alta_utc"] = pd.to_datetime(df_series["fecha_alta_utc"], errors='coerce')
+
+    # Crear columna de solo fecha
+    df_series["fecha"] = df_series["fecha_alta_utc"].dt.date
+
+    conteo_diario = df_series.groupby("fecha").size().reset_index(name="Total usuarios")
+
+    #st.title("Usuarios nuevos")
+
+    chart = alt.Chart(conteo_diario).mark_line(point=True).encode(
+        x="fecha:T",
+        y="Total usuarios:Q",
+        tooltip=["fecha", "Total usuarios"]
+    ).properties(width=700, height=400)
+
+    st.altair_chart(chart)
