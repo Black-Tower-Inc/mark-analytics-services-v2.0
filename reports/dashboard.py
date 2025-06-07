@@ -20,7 +20,7 @@ st.set_page_config(page_title="Trazabilidad por Usuario", layout="wide")
 import plotly.express as px
 from dotenv import load_dotenv
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import Counter
 import matplotlib.pyplot as plt
 from streamlit_plotly_events import plotly_events
@@ -78,9 +78,6 @@ client = MongoClient(MONGO_URI)
 
 collection_usereminds_1 = db["userlists202506"]
 
-
-
-
 collection_usereminds_2 = db["userlists202504"]
 
 collection_usereminds_real = db["usereminds"]
@@ -99,7 +96,7 @@ collections = [
 
 # Función para obtener los datos de MongoDB y procesar los resultados
 def obtener_datos_series_un_mes():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(hoy.year, hoy.month, 1)
     
 
@@ -176,7 +173,7 @@ def obtener_datos_series_un_mes():
 
 
 def obtener_datos_series():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(2025, 2, 1)  # desde febrero 2025
 
     pipeline = [
@@ -238,8 +235,9 @@ def obtener_datos_series():
     df = df.sort_values(by="Fecha").reset_index(drop=True)
     return df
 
+
 def obtener_audiencia_diaria_de_un_mes():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(hoy.year, hoy.month, 1)
 
     pipeline = [
@@ -285,7 +283,6 @@ def obtener_audiencia_diaria_de_un_mes():
     df["Fecha"] = pd.to_datetime(df["_id"].apply(lambda x: f'{x["year"]}-{x["month"]}-{x["day"]}'))
     df["Votos"] = df["votos"]
     return df[["Fecha", "Votos"]]
-
 
 
 def obtener_audiencia_diaria():
@@ -350,7 +347,6 @@ def obtener_audiencia_diaria():
     df["Fecha"] = pd.to_datetime(df["_id"].apply(lambda x: f'{x["year"]}-{x["month"]}-{x["day"]}'))
     df["Votos"] = df["votos"]
     return df[["Fecha", "Votos"]]
-
 
 
 # Función para obtener los datos de MongoDB
@@ -489,89 +485,126 @@ zona = "America_Mexico_City"  # Ajusta según tu zona
 # client = MongoClient("TU_URI")
 # database = client["TU_BASE_DE_DATOS"]
 
-def obtener_sentimientos():
-    sentimiento_acumulado = {}
+def obtener_datos_usuarios_nuevos_por_dia():
 
-    for mes in meses:
 
-        coleccion = db[f"usereminds{mes}_{zona}"]
-        
-        pipeline = [
-            {
-                "$match": {
-                    "userid": { 
-                        "$nin": [
-                            "whatsapp:+5212741410473", 
-                            "whatsapp:+5212292271390", 
-                            "whatsapp:+5212292071173", 
-                            "5212292468193"
-                        ]
-                    },
-                    "userprompt": { "$nin": ["¿Alguna notificación nueva para mi?"] }
-                }
-            },
-            {
-                "$group": {
-                    "_id": "$usermood",
-                    "count": { "$sum": 1 }
+    inicio_mes = datetime(2025, 6, 1, 0, 0, 0)
+
+    today = datetime(2025, 6, 7, 23, 59, 59)
+    
+    start_of_day = int(datetime(inicio_mes.year, inicio_mes.month, inicio_mes.day).timestamp())
+
+    end_of_day = int((datetime(today.year, today.month, today.day) + timedelta(days=1) - timedelta(seconds=1)).timestamp())
+
+    pipeline = [
+        {
+            "$match": {
+                "start_date": { "$gte": start_of_day, "$lte" :  end_of_day}  # 1 junio 2024
+            }
+        },
+        {
+            "$addFields": {
+                "day": {
+                    "$dateToString": {
+                        "format": "%Y-%m-%d",
+                        "date": { "$toDate": { "$multiply": ["$start_date", 1000] } }
+                    }
                 }
             }
-        ]
+        },
+        {
+            "$group": {
+                "_id": "$day",
+                "usuarios_por_dia": { "$sum": 1 }
+            }
+        },
+        {
+            "$sort": { "_id": 1 }
+        }
+    ]
 
-        for doc in coleccion.aggregate(pipeline):
-            mood = doc["_id"] or "Sin clasificar"
-            sentimiento_acumulado[mood] = sentimiento_acumulado.get(mood, 0) + doc["count"]
+    resultados = list(collection_suscriptions.aggregate(pipeline))
 
-    if not sentimiento_acumulado:
-        return pd.DataFrame(columns=["Sentimiento", "Conteo"])
+    if not resultados:
+        df = pd.DataFrame(columns=["Fecha", "Usuarios"])
+    
+    df = pd.DataFrame(resultados)
 
-    df = pd.DataFrame([
-        {"Sentimiento": key, "Conteo": value}
-        for key, value in sorted(sentimiento_acumulado.items())
-    ])
+    df["Fecha"] = pd.to_datetime(df["_id"])
+
+    df["Usuarios"] = df["usuarios_por_dia"]
+
+    df = df[["Fecha", "Usuarios"]]
+
     return df
+
+
+# Construcción de la interfaz en Streamlit
+# st.title("📊 Dashboard de documentos generados Mark AI. 2025-2026")
+
+# # Botón para actualizar datos
+# if st.button("Actualizar Datos", key="actualizar_datos_documentos"):
+#     df = obtener_datos()
+#     st.success("Datos actualizados correctamente.")
+# else:
+#     df = obtener_datos()
+
+# # Mostrar tabla con los datos
+# st.write("### Datos extraídos de MongoDB")
+# st.dataframe(df)
+
+
+# Generar y mostrar la gráfica si hay datos
+# if not df.empty:
+#     # Definir el gráfico con un tema predefinido, por ejemplo "seaborn"
+#     fig = px.bar(df, x='user_name', y='document_count', color='user_name', title='Documentos generados por usuario',
+#                 template="seaborn")  # Aplica el tema seaborn
+    
+#     fig.update_layout(
+#         bargap=0.2, 
+#         xaxis_tickangle=-45,  # Ángulo de los ticks del eje X
+#         xaxis_title='Nombre de usuarios',  # Título del eje X
+#         yaxis_title='Cantidad de documentos',  # Título del eje Y
+#         title='Documentos generados por usuario'  # Título general del gráfico
+#     )
+#     st.plotly_chart(fig)
+# else:
+#     st.warning("No hay datos disponibles para mostrar.")
+
+st.title("📊 Dashboard usuarios nuevos y tendencias Mark AI. 2025 (MES ACTUAL)")
+
+# Usa un spinner para feedback visual mientras carga
+if st.button("Actualizar Datos", key="obtener_datos_usuarios_nuevos_por_dia"):
+    df_usuarios_nuevos = obtener_datos_usuarios_nuevos_por_dia()
+    st.success("✅ Datos actualizados correctamente.")
+else:
+    df_usuarios_nuevos = obtener_datos_usuarios_nuevos_por_dia()
+
+# # Mostrar gráfica de tendencia de audiencia
+if not df_usuarios_nuevos.empty:
+    fig_audiencia = px.line(
+        df_usuarios_nuevos,
+        x="Fecha",
+        y="Usuarios",
+        markers=True,
+        title="📈 Tendencia de usuarios nuevos por día",
+        template="seaborn"
+    )
+    fig_audiencia.update_layout(
+        xaxis_title="📅 Fecha",
+        yaxis_title="👥 Cantidad de usuarios únicos",
+        hovermode="x unified",
+        title_x=0.5
+    )
+    st.plotly_chart(fig_audiencia, use_container_width=True)
+else:
+    st.warning("⚠️ No hay datos disponibles para mostrar.")
+
+
 
 
 
 # Construcción de la interfaz en Streamlit
-st.title("📊 Dashboard de documentos generados Mark AI. 2025-2026")
-
-# Botón para actualizar datos
-if st.button("Actualizar Datos", key="actualizar_datos_documentos"):
-    df = obtener_datos()
-    st.success("Datos actualizados correctamente.")
-else:
-    df = obtener_datos()
-
-# Mostrar tabla con los datos
-st.write("### Datos extraídos de MongoDB")
-st.dataframe(df)
-
-
-
-
-
-
-
-# Generar y mostrar la gráfica si hay datos
-if not df.empty:
-    # Definir el gráfico con un tema predefinido, por ejemplo "seaborn"
-    fig = px.bar(df, x='user_name', y='document_count', color='user_name', title='Documentos generados por usuario',
-                template="seaborn")  # Aplica el tema seaborn
-    
-    fig.update_layout(
-        bargap=0.2, 
-        xaxis_tickangle=-45,  # Ángulo de los ticks del eje X
-        xaxis_title='Nombre de usuarios',  # Título del eje X
-        yaxis_title='Cantidad de documentos',  # Título del eje Y
-        title='Documentos generados por usuario'  # Título general del gráfico
-    )
-    st.plotly_chart(fig)
-else:
-    st.warning("No hay datos disponibles para mostrar.")
-
-
-    # Construcción de la interfaz en Streamlit
 st.title("📊 Dashboard de tendencias Mark AI. 2025 (MES ACTUAL)")
 
 # Botón para actualizar datos
@@ -867,7 +900,7 @@ st.plotly_chart(fig, use_container_width=True)
 
 # Función para obtener los datos de MongoDB
 def obtener_datos_actividad():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(hoy.year, hoy.month, 1)
     
     pipeline = [
@@ -1077,7 +1110,7 @@ for month in months:
 
     coll = db[coll_name]
 
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(2025, 2, 1)
 
     query = {

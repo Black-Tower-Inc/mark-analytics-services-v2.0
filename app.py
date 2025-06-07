@@ -187,7 +187,7 @@ history = st.Page("tools/history.py", title="History", icon=":material/history:"
 settings = st.Page("tools/settings.py", title="Settings", icon=":material/search:")
 usage = st.Page("tools/usage.py", title="Usage", icon=":material/history:")
 
-if st.experimental_user.is_logged_in:
+if st.user.is_logged_in:
     pg = st.navigation(
         {
             "Account": [logout_page],
