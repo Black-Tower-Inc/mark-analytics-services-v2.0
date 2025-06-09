@@ -487,19 +487,21 @@ zona = "America_Mexico_City"  # Ajusta según tu zona
 
 def obtener_datos_usuarios_nuevos_por_dia():
 
+   # Rango de fechas del 1 al 9 de junio
+    inicio_mes = datetime(2025, 6, 1)
+    fin_dia = datetime(2025, 6, 9, 23, 59, 59)
 
-    inicio_mes = datetime(2025, 6, 1, 0, 0, 0)
-
-    today = datetime(2025, 6, 7, 23, 59, 59)
-    
-    start_of_day = int(datetime(inicio_mes.year, inicio_mes.month, inicio_mes.day).timestamp())
-
-    end_of_day = int((datetime(today.year, today.month, today.day) + timedelta(days=1) - timedelta(seconds=1)).timestamp())
+    # Convertimos a timestamp UNIX en segundos
+    start_of_range = int(inicio_mes.timestamp())
+    end_of_range = int(fin_dia.timestamp())
 
     pipeline = [
         {
             "$match": {
-                "start_date": { "$gte": start_of_day, "$lte" :  end_of_day}  # 1 junio 2024
+                "start_date": {
+                    "$gte": start_of_range,
+                    "$lte": end_of_range
+                }
             }
         },
         {
