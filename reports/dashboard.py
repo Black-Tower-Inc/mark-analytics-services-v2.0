@@ -533,6 +533,12 @@ def obtener_sentimientos():
 
 
 
+
+
+
+
+
+
 # Construcción de la interfaz en Streamlit
 st.title("📊 Dashboard de documentos generados Mark AI. 2025-2026")
 
@@ -771,15 +777,15 @@ if not df_sentimientos.empty:
                     labels={"Sentimiento": "Sentimiento", "Conteo": "Cantidad de Respuestas"},
                     template="seaborn")
 
-    # Ajustar el layout para darle más espacio a los ejes y más tamaño a la gráfica
-    fig.update_layout(
-        width=800,  # Ampliar el tamaño de la gráfica
-        height=600,  # Ajustar la altura de la gráfica
-        showlegend=False,  # Opcional, quitar la leyenda para una vista más limpia
-        xaxis_title="Sentimiento",
-        yaxis_title="Cantidad de Respuestas",
-        title="Distribución de Sentimientos de la Audiencia"
-    )
+    # # Ajustar el layout para darle más espacio a los ejes y más tamaño a la gráfica
+    # fig.update_layout(
+    #     width=800,  # Ampliar el tamaño de la gráfica
+    #     height=600,  # Ajustar la altura de la gráfica
+    #     showlegend=False,  # Opcional, quitar la leyenda para una vista más limpia
+    #     xaxis_title="Sentimiento",
+    #     yaxis_title="Cantidad de Respuestas",
+    #     title="Distribución de Sentimientos de la Audiencia"
+    # )
 
     #st.plotly_chart(fig)
     st.plotly_chart(fig, key="grafico_un_mes_sentimientos")
