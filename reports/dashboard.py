@@ -20,10 +20,13 @@ st.set_page_config(page_title="Trazabilidad por Usuario", layout="wide")
 import plotly.express as px
 from dotenv import load_dotenv
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import Counter
 import matplotlib.pyplot as plt
 from streamlit_plotly_events import plotly_events
+import plotly.graph_objects as go
+import calendar
+
 
 
 #import streamlit as st
@@ -78,9 +81,6 @@ client = MongoClient(MONGO_URI)
 
 collection_usereminds_1 = db["userlists202506"]
 
-
-
-
 collection_usereminds_2 = db["userlists202504"]
 
 collection_usereminds_real = db["usereminds"]
@@ -99,7 +99,7 @@ collections = [
 
 # Función para obtener los datos de MongoDB y procesar los resultados
 def obtener_datos_series_un_mes():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(hoy.year, hoy.month, 1)
     
 
@@ -176,7 +176,7 @@ def obtener_datos_series_un_mes():
 
 
 def obtener_datos_series():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(2025, 2, 1)  # desde febrero 2025
 
     pipeline = [
@@ -238,8 +238,9 @@ def obtener_datos_series():
     df = df.sort_values(by="Fecha").reset_index(drop=True)
     return df
 
+
 def obtener_audiencia_diaria_de_un_mes():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(hoy.year, hoy.month, 1)
 
     pipeline = [
@@ -285,7 +286,6 @@ def obtener_audiencia_diaria_de_un_mes():
     df["Fecha"] = pd.to_datetime(df["_id"].apply(lambda x: f'{x["year"]}-{x["month"]}-{x["day"]}'))
     df["Votos"] = df["votos"]
     return df[["Fecha", "Votos"]]
-
 
 
 def obtener_audiencia_diaria():
@@ -350,7 +350,6 @@ def obtener_audiencia_diaria():
     df["Fecha"] = pd.to_datetime(df["_id"].apply(lambda x: f'{x["year"]}-{x["month"]}-{x["day"]}'))
     df["Votos"] = df["votos"]
     return df[["Fecha", "Votos"]]
-
 
 
 # Función para obtener los datos de MongoDB
@@ -481,55 +480,353 @@ def obtener_sentimientos_por_un_mes():
 meses = ["202503","202504", "202505", "202506"]
 zona = "America_Mexico_City"  # Ajusta según tu zona
 
-# client = MongoClient(MONGO_URI)
 
-# db = client[os.getenv("DATABASE")]
 
-# # Conexión MongoDB
-# client = MongoClient("TU_URI")
-# database = client["TU_BASE_DE_DATOS"]
 
-def obtener_sentimientos():
-    sentimiento_acumulado = {}
 
-    for mes in meses:
 
-        coleccion = db[f"usereminds{mes}_{zona}"]
-        
-        pipeline = [
-            {
-                "$match": {
-                    "userid": { 
-                        "$nin": [
-                            "whatsapp:+5212741410473", 
-                            "whatsapp:+5212292271390", 
-                            "whatsapp:+5212292071173", 
-                            "5212292468193"
-                        ]
-                    },
-                    "userprompt": { "$nin": ["¿Alguna notificación nueva para mi?"] }
-                }
-            },
-            {
-                "$group": {
-                    "_id": "$usermood",
-                    "count": { "$sum": 1 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#########################################################################################################################
+######################################################################################################################
+#########################################################################################################################
+
+
+def obtener_datos_usuarios_nuevos_por_dia():
+
+    hoy = datetime.now()
+
+    # Pipeline: usuarios nuevos por día
+    pipeline_usuarios = [
+        {
+            "$addFields": {
+                "day": {
+                    "$dateToString": {
+                        "format": "%Y-%m-%d",
+                        "date": { "$toDate": { "$multiply": ["$start_date", 1000] } }
+                    }
                 }
             }
-        ]
+        },
+        {
+            "$group": {
+                "_id": "$day",
+                "usuarios_por_dia": { "$sum": 1 }
+            }
+        },
+        {
+            "$sort": { "_id": 1 }
+        }
+    ]
 
-        for doc in coleccion.aggregate(pipeline):
-            mood = doc["_id"] or "Sin clasificar"
-            sentimiento_acumulado[mood] = sentimiento_acumulado.get(mood, 0) + doc["count"]
+    resultados_usuarios = list(collection_suscriptions.aggregate(pipeline_usuarios))
 
-    if not sentimiento_acumulado:
-        return pd.DataFrame(columns=["Sentimiento", "Conteo"])
+    df_usuarios = pd.DataFrame(resultados_usuarios)
 
-    df = pd.DataFrame([
-        {"Sentimiento": key, "Conteo": value}
-        for key, value in sorted(sentimiento_acumulado.items())
-    ])
-    return df
+    if df_usuarios.empty:
+
+        df_usuarios = pd.DataFrame(columns=["Fecha", "Usuarios"])
+
+    else:
+
+        df_usuarios["Fecha"] = pd.to_datetime(df_usuarios["_id"])
+
+        df_usuarios["Usuarios"] = df_usuarios["usuarios_por_dia"]
+
+        df_usuarios = df_usuarios[["Fecha", "Usuarios"]]
+
+    start_2025 = datetime(2025, 1, 1)
+
+    end_2025 = datetime(2025, 12, 31, 23, 59, 59)
+
+
+    pipeline_votos = [
+        {
+            "$match": {
+                "userid": {"$nin": [
+                    "whatsapp:+5212741410473", 
+                    "whatsapp:+5212292271390", 
+                    "whatsapp:+5212292071173", 
+                    "5212292468193"
+                ]},
+                "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
+                "cdate": {"$gte": start_2025, "$lte": end_2025}  # 🔥 Agregado filtro explícito por año
+            }
+        },
+        {
+            "$group": {
+                "_id": {
+                    "year": {"$year": "$cdate"},
+                    "month": {"$month": "$cdate"},
+                    "day": {"$dayOfMonth": "$cdate"},
+                    "userid": "$userid"
+                }
+            }
+        },
+        {
+            "$group": {
+                "_id": {
+                    "year": "$_id.year",
+                    "month": "$_id.month",
+                    "day": "$_id.day"
+                },
+                "votos": {"$sum": 1}
+            }
+        },
+        {
+            "$sort": {
+                "_id.year": 1,
+                "_id.month": 1,
+                "_id.day": 1
+            }
+        }
+    ]
+
+
+    resultados_votos = list(collection_usereminds_1.aggregate(pipeline_votos))
+
+    df_votos = pd.DataFrame(resultados_votos)
+    if df_votos.empty:
+        df_votos = pd.DataFrame(columns=["Fecha", "Votos"])
+    else:
+        df_votos["Fecha"] = pd.to_datetime(
+            df_votos["_id"].apply(lambda x: f'{x["year"]}-{x["month"]}-{x["day"]}')
+        )
+        df_votos["Votos"] = df_votos["votos"]
+        df_votos = df_votos[["Fecha", "Votos"]]
+
+    # Crear fechas completas del año 2025
+    fechas_completas = pd.date_range(start="2025-01-01", end="2025-12-31", freq="D")
+    df_base = pd.DataFrame({"Fecha": fechas_completas})
+
+    # Unir ambas fuentes
+    df_final = df_base.merge(df_usuarios, on="Fecha", how="left")
+    df_final = df_final.merge(df_votos, on="Fecha", how="left")
+
+    df_final["Usuarios"] = df_final["Usuarios"].fillna(0).astype(int)
+    df_final["Votos"] = df_final["Votos"].fillna(0).astype(int)
+
+    # Cortar hasta hoy
+    df_final = df_final[df_final["Fecha"] <= hoy]
+
+    return df_final
+
+#########################################################################################################################
+######################################################################################################################
+#########################################################################################################################
+
+
+
+st.markdown("<h2 style='font-size: 40px;'>📊 Dashboard usuarios nuevos VS votos diarios</h2>", unsafe_allow_html=True)
+
+
+# Usa un spinner para feedback visual mientras carga
+if st.button("Actualizar Datos", key="obtener_datos_usuarios_nuevos_por_dia"):
+
+    df_usuarios_nuevos = obtener_datos_usuarios_nuevos_por_dia()
+    
+    st.success("✅ Datos actualizados correctamente.")
+
+else:
+
+    df_usuarios_nuevos = obtener_datos_usuarios_nuevos_por_dia()
+
+
+hoy = pd.Timestamp(datetime.now().date())
+
+# 📌 Filtro de año y mes
+col1, col2 = st.columns(2)
+with col1:
+    año_seleccionado = st.selectbox("Selecciona el año", options=sorted(df_usuarios_nuevos["Fecha"].dt.year.unique()), index=0)
+with col2:
+    mes_seleccionado = st.selectbox("Selecciona el mes", options=list(calendar.month_name)[1:], index=hoy.month - 1)
+
+# 📌 Filtrado del dataframe por mes y año seleccionados
+df_filtrado = df_usuarios_nuevos[
+    (df_usuarios_nuevos["Fecha"].dt.year == año_seleccionado) &
+    (df_usuarios_nuevos["Fecha"].dt.month == list(calendar.month_name).index(mes_seleccionado))
+]
+
+
+usuarios_hoy = df_usuarios_nuevos.loc[df_usuarios_nuevos["Fecha"] == hoy, "Usuarios"].sum()
+total_usuarios = df_usuarios_nuevos["Usuarios"].sum()
+
+porcentaje_hoy = (usuarios_hoy / total_usuarios) * 100 if total_usuarios > 0 else 0
+
+st.metric(
+    label=f"📅 Porcentaje de usuarios nuevos hoy ({hoy.strftime('%d %b %Y')})",
+    value=f"{porcentaje_hoy:.2f}%",
+    delta=f"{usuarios_hoy} usuarios"
+)
+
+# 📈 Línea
+if not df_filtrado.empty:
+    fig = px.line(
+        df_filtrado,
+        x="Fecha",
+        y=["Usuarios", "Votos"],
+        title="📊 Actividad diaria: usuarios nuevos vs votos",
+        template="seaborn",
+        markers=True,
+        color_discrete_map={
+            "Usuarios": "royalblue",
+            "Votos": "green"
+        }
+    )
+
+    fig.update_traces(line=dict(width=1))
+    fig.update_layout(
+        xaxis_title="📅 Fecha",
+        yaxis_title="👥 Usuarios",
+        hovermode="x unified",
+        legend_title="Métrica",
+        title_x=0.5
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.warning("⚠️ No hay datos disponibles para este mes.")
+
+# 📊 Barras apiladas
+
+# Extender el rango del eje X unos días para espaciar visualmente
+rango_inicio = df_filtrado["Fecha"].min() - pd.Timedelta(days=5)
+rango_fin = df_filtrado["Fecha"].max() + pd.Timedelta(days=5)
+
+fig = go.Figure()
+
+fig.add_trace(go.Bar(
+    x=df_filtrado["Fecha"],
+    y=df_filtrado["Usuarios"],
+    name="Usuarios Nuevos",
+    marker_color="royalblue"
+    # width=0.4 
+))
+
+fig.add_trace(go.Bar(
+    x=df_filtrado["Fecha"],
+    y=df_filtrado["Votos"],
+    name="Votos",
+    marker_color="green"
+    # width=0.4
+))
+
+
+fig.update_layout(
+    barmode='stack',
+    title="📊 Usuarios nuevos y votos diarios (apilado)",
+    xaxis_title="📅 Fecha",
+    yaxis_title="👥 Usuarios",
+    legend_title="Métrica",
+    hovermode="x unified",
+    title_x=0.5,
+    xaxis=dict(range=[rango_inicio, rango_fin])  # ⬅️ Este cambio hace el truco
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+
+#########################################################################################################################
+######################################################################################################################
+#########################################################################################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -540,44 +837,6 @@ def obtener_sentimientos():
 
 
 # Construcción de la interfaz en Streamlit
-st.title("📊 Dashboard de documentos generados Mark AI. 2025-2026")
-
-# Botón para actualizar datos
-if st.button("Actualizar Datos", key="actualizar_datos_documentos"):
-    df = obtener_datos()
-    st.success("Datos actualizados correctamente.")
-else:
-    df = obtener_datos()
-
-# Mostrar tabla con los datos
-st.write("### Datos extraídos de MongoDB")
-st.dataframe(df)
-
-
-
-
-
-
-
-# Generar y mostrar la gráfica si hay datos
-if not df.empty:
-    # Definir el gráfico con un tema predefinido, por ejemplo "seaborn"
-    fig = px.bar(df, x='user_name', y='document_count', color='user_name', title='Documentos generados por usuario',
-                template="seaborn")  # Aplica el tema seaborn
-    
-    fig.update_layout(
-        bargap=0.2, 
-        xaxis_tickangle=-45,  # Ángulo de los ticks del eje X
-        xaxis_title='Nombre de usuarios',  # Título del eje X
-        yaxis_title='Cantidad de documentos',  # Título del eje Y
-        title='Documentos generados por usuario'  # Título general del gráfico
-    )
-    st.plotly_chart(fig)
-else:
-    st.warning("No hay datos disponibles para mostrar.")
-
-
-    # Construcción de la interfaz en Streamlit
 st.title("📊 Dashboard de tendencias Mark AI. 2025 (MES ACTUAL)")
 
 # Botón para actualizar datos
@@ -777,15 +1036,15 @@ if not df_sentimientos.empty:
                     labels={"Sentimiento": "Sentimiento", "Conteo": "Cantidad de Respuestas"},
                     template="seaborn")
 
-    # # Ajustar el layout para darle más espacio a los ejes y más tamaño a la gráfica
-    # fig.update_layout(
-    #     width=800,  # Ampliar el tamaño de la gráfica
-    #     height=600,  # Ajustar la altura de la gráfica
-    #     showlegend=False,  # Opcional, quitar la leyenda para una vista más limpia
-    #     xaxis_title="Sentimiento",
-    #     yaxis_title="Cantidad de Respuestas",
-    #     title="Distribución de Sentimientos de la Audiencia"
-    # )
+    # Ajustar el layout para darle más espacio a los ejes y más tamaño a la gráfica
+    fig.update_layout(
+        width=800,  # Ampliar el tamaño de la gráfica
+        height=600,  # Ajustar la altura de la gráfica
+        showlegend=False,  # Opcional, quitar la leyenda para una vista más limpia
+        xaxis_title="Sentimiento",
+        yaxis_title="Cantidad de Respuestas",
+        title="Distribución de Sentimientos de la Audiencia"
+    )
 
     #st.plotly_chart(fig)
     st.plotly_chart(fig, key="grafico_un_mes_sentimientos")
@@ -873,7 +1132,7 @@ st.plotly_chart(fig, use_container_width=True)
 
 # Función para obtener los datos de MongoDB
 def obtener_datos_actividad():
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(hoy.year, hoy.month, 1)
     
     pipeline = [
@@ -1083,7 +1342,7 @@ for month in months:
 
     coll = db[coll_name]
 
-    hoy = datetime.utcnow()
+    hoy = datetime.now()
     primer_dia = datetime(2025, 2, 1)
 
     query = {
