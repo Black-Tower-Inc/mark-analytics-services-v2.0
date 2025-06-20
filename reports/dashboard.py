@@ -602,7 +602,9 @@ def obtener_datos_usuarios_nuevos_por_dia():
                     "whatsapp:+5212741410473", 
                     "whatsapp:+5212292271390", 
                     "whatsapp:+5212292071173", 
-                    "5212292468193"
+                    "5212741410473",
+                    "5212292271390",
+                    "5212292071173"
                 ]},
                 "userprompt": {"$nin": ["¿Alguna notificación nueva para mi?"]},
                 "cdate": {"$gte": start_2025, "$lte": end_2025}  # 🔥 Agregado filtro explícito por año
@@ -705,14 +707,15 @@ df_filtrado = df_usuarios_nuevos[
 
 usuarios_hoy = df_usuarios_nuevos.loc[df_usuarios_nuevos["Fecha"] == hoy, "Usuarios"].sum()
 total_usuarios = df_usuarios_nuevos["Usuarios"].sum()
+votos = df_usuarios_nuevos["Usuarios"].sum()
 
 porcentaje_hoy = (usuarios_hoy / total_usuarios) * 100 if total_usuarios > 0 else 0
 
-st.metric(
-    label=f"📅 Porcentaje de usuarios nuevos hoy ({hoy.strftime('%d %b %Y')})",
-    value=f"{porcentaje_hoy:.2f}%",
-    delta=f"{usuarios_hoy} usuarios"
-)
+# st.metric(
+#     label=f"",
+#     value=f"{votos} votos",
+#     delta=f"{usuarios_hoy} usuarios"
+# )
 
 # 📈 Línea
 if not df_filtrado.empty:
@@ -724,8 +727,9 @@ if not df_filtrado.empty:
         template="seaborn",
         markers=True,
         color_discrete_map={
-            "Usuarios": "royalblue",
-            "Votos": "green"
+            "Usuarios nuevos": "green",
+            "Votos": "navy"
+          
         }
     )
 
@@ -753,8 +757,8 @@ fig = go.Figure()
 fig.add_trace(go.Bar(
     x=df_filtrado["Fecha"],
     y=df_filtrado["Usuarios"],
-    name="Usuarios Nuevos",
-    marker_color="royalblue"
+    name="Usuarios nuevos",
+    marker_color="green"
     # width=0.4 
 ))
 
@@ -762,7 +766,7 @@ fig.add_trace(go.Bar(
     x=df_filtrado["Fecha"],
     y=df_filtrado["Votos"],
     name="Votos",
-    marker_color="green"
+    marker_color="navy"
     # width=0.4
 ))
 
