@@ -80,6 +80,7 @@ db = client[st.secrets["DB"]["DATABASE"]]
 client = MongoClient(MONGO_URI)
 
 collection_usereminds_1 = db["userlists202506"]
+#    data = list(collection_usereminds_1.aggregate(pipeline))
 
 collection_usereminds_2 = db["userlists202504"]
 
